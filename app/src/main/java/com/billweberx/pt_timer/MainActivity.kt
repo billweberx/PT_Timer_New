@@ -12,7 +12,6 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -45,13 +44,16 @@ import androidx.compose.ui.tooling.preview.Preview
 
 // Required import for MenuAnchorType
 import androidx.compose.material3.MenuAnchorType
+//import androidx.compose.ui.text.intl.Locale
+import java.text.DecimalFormatSymbols
+import java.util.Locale
 
-// Define AppTones
-object AppTones {
-    const val COUNTDOWN_BEEP = ToneGenerator.TONE_PROP_BEEP
-    const val PHASE_END_BEEP = ToneGenerator.TONE_CDMA_HIGH_L
-    const val WORKOUT_COMPLETE_BEEP = ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD
-}
+//// Define AppTones
+//object AppTones {
+//    const val COUNTDOWN_BEEP = ToneGenerator.TONE_PROP_BEEP
+//    const val PHASE_END_BEEP = ToneGenerator.TONE_CDMA_HIGH_L
+//    const val WORKOUT_COMPLETE_BEEP = ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD
+//}
 
 // Define AppSoundIds
 object AppSoundIds {
@@ -79,7 +81,7 @@ class MainActivity : ComponentActivity() {
     private var audioFocusRequest: AudioFocusRequest? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val playbackAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -109,7 +111,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         } else {
@@ -167,7 +169,6 @@ suspend fun timerCoroutine(
     var currentOverallElapsedTimeMs = initialOverallElapsedTimeMs
     var currentPhaseIsExercise = initialIsExercisePhase
     var setsLeft = initialSetsRemaining
-    var workoutAlreadyCompleted = false
     val tickIntervalMs = 100L
 
     val effectiveTotalWorkoutTimeMs = if (targetTotalWorkoutTimeMs > 0) {
@@ -176,67 +177,43 @@ suspend fun timerCoroutine(
         (exerciseDurationMs * totalWorkoutSets + restDurationMs * (totalWorkoutSets - 1).coerceAtLeast(0))
     }
 
-    if (!workoutAlreadyCompleted) {
-        if (currentPhaseIsExercise) {
-            onPhaseChange("Exercise Phase")
-            if (!workoutCompleted.value) {
-                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_START_SOUND_ID)
-            }
-        } else {
-            onPhaseChange("Rest Phase")
-            if (!workoutCompleted.value) {
-                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_REST_SOUND_ID)
-            }
+    if (currentPhaseIsExercise) {
+        onPhaseChange("Exercise Phase")
+        if (!workoutCompleted.value) {
+            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_START_SOUND_ID)
+        }
+    } else {
+        onPhaseChange("Rest Phase")
+        if (!workoutCompleted.value) {
+            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_REST_SOUND_ID)
         }
     }
-
     if (setsLeft <= 0 && effectiveTotalWorkoutTimeMs <= 0) {
-        if (!workoutAlreadyCompleted) {
-            workoutAlreadyCompleted = true
-            onComplete("Error: No sets or time specified")
-        }
+        onComplete("Error: No sets or time specified")
         return
     }
-    if (setsLeft == 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
-        if (!workoutAlreadyCompleted) {
-            workoutAlreadyCompleted = true
-            onComplete("Workout Complete (Error: Started with 0 sets remaining)")
-        }
-        return
-    }
-
     mainLoop@ while (true) {
-        if (!workoutAlreadyCompleted) {
-            if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
-                workoutAlreadyCompleted = true
-                onComplete("Workout Complete")
-                workoutCompleted.value = true
-                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
-                break@mainLoop
-            }
-            if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
-                workoutAlreadyCompleted = true
-                onComplete("Workout Complete")
-                workoutCompleted.value = true
-                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
-                break@mainLoop
-            }
-        } else {
+        if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
+            onComplete("Workout Complete")
+            workoutCompleted.value = true
+            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
             break@mainLoop
         }
-
+        if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
+            onComplete("Workout Complete")
+            workoutCompleted.value = true
+            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+            break@mainLoop
+        }
         delay(tickIntervalMs)
         currentTimeLeftInPhaseMs -= tickIntervalMs
         currentOverallElapsedTimeMs += tickIntervalMs
 
-        if (!workoutAlreadyCompleted) {
-            if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
-                workoutAlreadyCompleted = true
-                onComplete("Workout Complete")
-                workoutCompleted.value = true
-                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
-                break@mainLoop
-            }
+        if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
+            onComplete("Workout Complete")
+            workoutCompleted.value = true
+            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+            break@mainLoop
         }
 
         if (currentTimeLeftInPhaseMs <= 0) {
@@ -245,17 +222,12 @@ suspend fun timerCoroutine(
 
             if (currentPhaseIsExercise) {
                 setsLeft--
-
-                if (!workoutAlreadyCompleted) {
-                    if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
-                        workoutAlreadyCompleted = true
-                        onComplete("Workout Complete")
-                        workoutCompleted.value = true
-                        playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
-                        break@mainLoop
-                    }
-                } else { break@mainLoop }
-
+                if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
+                    onComplete("Workout Complete")
+                    workoutCompleted.value = true
+                    playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+                    break@mainLoop
+                }
                 if (setsLeft > 0 || (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs < effectiveTotalWorkoutTimeMs)) {
                     currentPhaseIsExercise = false
                     if (restDurationMs > 0) {
@@ -269,11 +241,6 @@ suspend fun timerCoroutine(
                     } else {
                         println("Skipping rest, starting next exercise: setsLeft=$setsLeft")
                         currentPhaseIsExercise = true
-                        if (!workoutAlreadyCompleted && setsLeft <= 0 && effectiveTotalWorkoutTimeMs <= 0) {
-                            workoutAlreadyCompleted = true
-                            onComplete("Workout Complete")
-                            break@mainLoop
-                        }
                         currentTimeLeftInPhaseMs = exerciseDurationMs
                         onPhaseChange("Exercise Phase")
                         if (!workoutCompleted.value) {
@@ -281,12 +248,6 @@ suspend fun timerCoroutine(
                         }
                     }
                 } else {
-                    if (!workoutAlreadyCompleted) {
-                        workoutAlreadyCompleted = true
-                        onComplete("Workout Complete")
-                        workoutCompleted.value = true
-                        playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
-                    }
                     break@mainLoop
                 }
             } else {
@@ -298,28 +259,19 @@ suspend fun timerCoroutine(
                 }
             }
 
-            if (!workoutAlreadyCompleted) {
-                if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
-                    workoutAlreadyCompleted = true
-                    onComplete("Workout Complete")
-                    workoutCompleted.value = true
-                    playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
-                    break@mainLoop
-                }
-                if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
-                    workoutAlreadyCompleted = true
-                    onComplete("Workout Complete")
-                    workoutCompleted.value = true
-                    playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
-                    break@mainLoop
-                }
-            } else {
+            if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
+                onComplete("Workout Complete")
+                workoutCompleted.value = true
+                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
                 break@mainLoop
             }
-        }
+            if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
+                onComplete("Workout Complete")
+                workoutCompleted.value = true
+                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+                break@mainLoop
+            }
 
-        if (workoutAlreadyCompleted) {
-            break@mainLoop
         }
         onUpdate(currentTimeLeftInPhaseMs, currentOverallElapsedTimeMs, currentPhaseIsExercise, setsLeft)
     }
@@ -496,13 +448,15 @@ fun PTTimerScreen() {
     var pausedCurrentSetsRemaining by remember { mutableStateOf(0.0) }
     var pausedStatus by remember { mutableStateOf("") }
     var pausedCalculatedInitialTotalWorkoutTimeMs by remember { mutableStateOf(0.0) }
+    val decimalFormat = remember {
+        DecimalFormat("0.0", DecimalFormatSymbols(Locale.US))
+    }
 
-    val decimalFormat = remember { DecimalFormat("0.0") }
     val formattedTimeLeft = remember(timeLeftInCurrentPhaseMs) {
         val totalSeconds = timeLeftInCurrentPhaseMs / 1000.0
         val minutes = (totalSeconds / 60).toInt()
         val seconds = totalSeconds % 60
-        String.format("%02d:%s", minutes, decimalFormat.format(seconds))
+        String.format(Locale.US, "%02d:%s", minutes, decimalFormat.format(seconds))
     }
 
     val remainingDisplay = remember(
@@ -622,7 +576,7 @@ fun PTTimerScreen() {
             calculatedInitialTotalWorkoutTimeMs = pausedCalculatedInitialTotalWorkoutTimeMs
         } else {
             isExercisePhase = true
-            currentSetsRemaining = sets.toDouble()
+            currentSetsRemaining = sets
             timeLeftInCurrentPhaseMs = exerciseTime * 1000
             overallElapsedTimeMs = 0.0
             calculatedInitialTotalWorkoutTimeMs = if (totalTime > 0) {
@@ -658,7 +612,7 @@ fun PTTimerScreen() {
         status = "Ready"
         timeLeftInCurrentPhaseMs = exerciseTime * 1000
         overallElapsedTimeMs = 0.0
-        currentSetsRemaining = sets.toDouble()
+        currentSetsRemaining = sets
         isExercisePhase = true
         workoutCompleted.value = false
         pausedTimeLeftInCurrentPhaseMs = 0.0
