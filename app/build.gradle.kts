@@ -37,6 +37,7 @@ android {
     buildFeatures {
         compose = true
     }
+    @Suppress("UnstableApiUsage")
     composeOptions {
         kotlinCompilerExtensionVersion = "1.6.11" // Updated for Narwhal and BOM 2024.09.00
     }
