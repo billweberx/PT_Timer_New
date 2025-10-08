@@ -42,7 +42,8 @@ import java.text.DecimalFormat
 import androidx.compose.ui.tooling.preview.Preview
 
 // Required import for MenuAnchorType
-import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+
 //import androidx.compose.ui.text.intl.Locale
 import java.text.DecimalFormatSymbols
 import java.util.Locale
@@ -756,7 +757,7 @@ fun PTTimerScreen() {
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                     )
                     ExposedDropdownMenu(
                         expanded = expanded,
