@@ -1,6 +1,7 @@
 package com.billweberx.pt_timer
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -43,8 +44,8 @@ import androidx.compose.ui.tooling.preview.Preview
 
 // Required import for MenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.ui.focus.FocusManager
 
-//import androidx.compose.ui.text.intl.Locale
 import java.text.DecimalFormatSymbols
 import java.util.Locale
 
@@ -122,8 +123,16 @@ class MainActivity : ComponentActivity() {
     @Preview(showBackground = true)
     @Composable
     fun DefaultPreview() {
-        PT_TimerTheme { // Replace with your project's theme name if different
-            PTTimerScreen()
+        PT_TimerTheme {
+            PTTimerScreenContent(sharedPreferences = null,
+                // 2. Add a fake FocusManager for the preview:
+                focusManager = object : FocusManager {
+                    override fun clearFocus(force: Boolean) {}
+                    override fun moveFocus(focusDirection: FocusDirection): Boolean = false
+                },
+                // 3. Add a fake sound player that does nothing for the preview:
+                onPlaySound = { /* In preview, this does nothing */ }
+                )
         }
     }
 
@@ -150,8 +159,7 @@ fun playSound(
 }
 
 suspend fun timerCoroutine(
-    soundPool: SoundPool,
-    activeStreamIds: SnapshotStateList<Int>,
+    playSoundAction: (soundId: Int) -> Unit,
     workoutCompleted: MutableState<Boolean>,
     initialTimeLeftInPhaseMs: Double,
     initialOverallElapsedTimeMs: Double,
@@ -180,12 +188,12 @@ suspend fun timerCoroutine(
     if (currentPhaseIsExercise) {
         onPhaseChange("Exercise Phase")
         if (!workoutCompleted.value) {
-            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_START_SOUND_ID)
+            playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
         }
     } else {
         onPhaseChange("Rest Phase")
         if (!workoutCompleted.value) {
-            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_REST_SOUND_ID)
+            playSoundAction(AppSoundIds.EXERCISE_REST_SOUND_ID)
         }
     }
     if (setsLeft <= 0 && effectiveTotalWorkoutTimeMs <= 0) {
@@ -196,13 +204,13 @@ suspend fun timerCoroutine(
         if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
             onComplete("Workout Complete")
             workoutCompleted.value = true
-            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+            playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
             break@mainLoop
         }
         if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
             onComplete("Workout Complete")
             workoutCompleted.value = true
-            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+            playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
             break@mainLoop
         }
         delay(tickIntervalMs)
@@ -212,7 +220,7 @@ suspend fun timerCoroutine(
         if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
             onComplete("Workout Complete")
             workoutCompleted.value = true
-            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+            playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
             break@mainLoop
         }
 
@@ -225,7 +233,7 @@ suspend fun timerCoroutine(
                 if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
                     onComplete("Workout Complete")
                     workoutCompleted.value = true
-                    playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+                    playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
                     break@mainLoop
                 }
                 if (setsLeft > 0 || (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs < effectiveTotalWorkoutTimeMs)) {
@@ -235,7 +243,7 @@ suspend fun timerCoroutine(
                         onPhaseChange("Rest Phase")
                         if ((effectiveTotalWorkoutTimeMs - currentOverallElapsedTimeMs) > 0.1) {
                             if (!workoutCompleted.value) {
-                                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_REST_SOUND_ID)
+                                playSoundAction(AppSoundIds.EXERCISE_REST_SOUND_ID)
                             }
                         }
                     } else {
@@ -244,7 +252,7 @@ suspend fun timerCoroutine(
                         currentTimeLeftInPhaseMs = exerciseDurationMs
                         onPhaseChange("Exercise Phase")
                         if (!workoutCompleted.value) {
-                            playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_START_SOUND_ID)
+                            playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
                         }
                     }
                 } else {
@@ -255,20 +263,20 @@ suspend fun timerCoroutine(
                 currentTimeLeftInPhaseMs = exerciseDurationMs
                 onPhaseChange("Exercise Phase")
                 if (!workoutCompleted.value) {
-                    playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_START_SOUND_ID)
+                    playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
                 }
             }
 
             if (effectiveTotalWorkoutTimeMs > 0 && currentOverallElapsedTimeMs >= effectiveTotalWorkoutTimeMs) {
                 onComplete("Workout Complete")
                 workoutCompleted.value = true
-                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+                playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
                 break@mainLoop
             }
             if (setsLeft <= 0 && totalWorkoutSets > 0 && effectiveTotalWorkoutTimeMs <= 0) {
                 onComplete("Workout Complete")
                 workoutCompleted.value = true
-                playSound(soundPool, activeStreamIds, AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+                playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
                 break@mainLoop
             }
 
@@ -277,26 +285,66 @@ suspend fun timerCoroutine(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PTTimerScreen() {
     val context = LocalContext.current
     val sharedPreferences = context.getSharedPreferences("PT_Timer_Prefs", Context.MODE_PRIVATE)
-    val editor = sharedPreferences.edit()
     val focusManager = LocalFocusManager.current
+
+    // Set up the REAL SoundPool and its state here
+    val soundPool = remember {
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        SoundPool.Builder().setMaxStreams(3).setAudioAttributes(audioAttributes).build()
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            soundPool.release()
+        }
+    }
+
+    val activeStreamIds = remember { mutableStateListOf<Int>() }
+
+    // Load sounds into the SoundPool
+    LaunchedEffect(soundPool, context) {
+        AppSoundIds.EXERCISE_START_SOUND_ID = soundPool.load(context, R.raw.exercise_start, 1)
+        AppSoundIds.EXERCISE_REST_SOUND_ID = soundPool.load(context, R.raw.exercise_rest, 1)
+        AppSoundIds.EXERCISE_COMPLETE_SOUND_ID = soundPool.load(context, R.raw.exercise_complete, 1)
+    }
+
+    // Now, call PTTimerScreenContent with all the required parameters
+    PTTimerScreenContent(
+        sharedPreferences = sharedPreferences,
+        focusManager = focusManager, // <-- Provide the focus manager
+        onPlaySound = { soundId -> // <-- Provide the REAL sound-playing function
+            playSound(soundPool, activeStreamIds, soundId)
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PTTimerScreenContent(
+    sharedPreferences: SharedPreferences?,
+    focusManager: FocusManager,
+    onPlaySound: (soundId: Int) -> Unit
+) {
+    val editor = sharedPreferences?.edit()
 
     // Numeric states
     var exerciseTime by remember {
-        mutableStateOf(sharedPreferences.getString("exercise_time", "30.0")?.toDoubleOrNull() ?: 30.0)
+        mutableDoubleStateOf(sharedPreferences?.getString("exercise_time", "30.0")?.toDoubleOrNull() ?: 30.0)
     }
     var restTime by remember {
-        mutableStateOf(sharedPreferences.getString("rest_time", "0.0")?.toDoubleOrNull() ?: 0.0)
+        mutableDoubleStateOf(sharedPreferences?.getString("rest_time", "0.0")?.toDoubleOrNull() ?: 0.0)
     }
     var sets by remember {
-        mutableStateOf(sharedPreferences.getString("sets", "3")?.toDoubleOrNull() ?: 3.0)
+        mutableDoubleStateOf(sharedPreferences?.getString("sets", "3")?.toDoubleOrNull() ?: 3.0)
     }
     var totalTime by remember {
-        mutableStateOf(sharedPreferences.getString("total_time", "0.0")?.toDoubleOrNull() ?: 0.0)
+        mutableDoubleStateOf(sharedPreferences?.getString("total_time", "0.0")?.toDoubleOrNull() ?: 0.0)
     }
 
     // TextFieldValue states
@@ -328,13 +376,13 @@ fun PTTimerScreen() {
 
     // Load setup names
     LaunchedEffect(Unit) {
-        if (sharedPreferences.getString("total_time", "0.0") != "0") {
-            editor.putString("total_time", "0").apply()
+        if (sharedPreferences?.getString("total_time", "0.0") != "0") {
+            editor?.putString("total_time", "0")?.apply()
         }
-        if (sharedPreferences.getString("rest_time", "0.0") != "0") {
-            editor.putString("rest_time", "0").apply()
+        if (sharedPreferences?.getString("rest_time", "0.0") != "0") {
+            editor?.putString("rest_time", "0")?.apply()
         }
-        val savedNames = sharedPreferences.getStringSet("setup_names", emptySet())?.toList() ?: emptyList()
+        val savedNames = sharedPreferences?.getStringSet("setup_names", emptySet())?.toList() ?: emptyList()
         setupNames.addAll(savedNames.sorted())
         println("Setup names loaded: $setupNames")
     }
@@ -344,7 +392,7 @@ fun PTTimerScreen() {
 
     // Load setup
     fun loadSetup(name: String) {
-        val json = sharedPreferences.getString("setup_$name", null)
+        val json = sharedPreferences?.getString("setup_$name", null)
         json?.let {
             val config = gson.fromJson(it, SetupConfig::class.java)
             exerciseTime = config.exerciseTime
@@ -364,11 +412,11 @@ fun PTTimerScreen() {
         if (name.isBlank()) return
         val config = SetupConfig(exerciseTime, restTime, sets, totalTime)
         val json = gson.toJson(config)
-        editor.putString("setup_$name", json).apply()
+        editor?.putString("setup_$name", json)?.apply()
         if (!setupNames.contains(name)) {
-            val updatedNames = sharedPreferences.getStringSet("setup_names", emptySet())?.toMutableSet() ?: mutableSetOf()
+            val updatedNames = sharedPreferences?.getStringSet("setup_names", emptySet())?.toMutableSet() ?: mutableSetOf()
             updatedNames.add(name)
-            editor.putStringSet("setup_names", updatedNames).apply()
+            editor?.putStringSet("setup_names", updatedNames)?.apply()
             setupNames.add(name)
             setupNames.sort()
         }
@@ -377,24 +425,14 @@ fun PTTimerScreen() {
 
     // Delete setup
     fun deleteSetup(name: String) {
-        editor.remove("setup_$name").apply()
-        val updatedNames = sharedPreferences.getStringSet("setup_names", emptySet())?.toMutableSet() ?: mutableSetOf()
+        editor?.remove("setup_$name")?.apply()
+        val updatedNames = sharedPreferences?.getStringSet("setup_names", emptySet())?.toMutableSet() ?: mutableSetOf()
         updatedNames.remove(name)
-        editor.putStringSet("setup_names", updatedNames).apply()
+        editor?.putStringSet("setup_names", updatedNames)?.apply()
         setupNames.remove(name)
         selectedSetup = null
         println("Deleted setup: $name")
     }
-
-    // SoundPool setup
-    val soundPool = remember {
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-            .build()
-        SoundPool.Builder().setMaxStreams(3).setAudioAttributes(audioAttributes).build()
-    }
-    val activeStreamIds = remember { mutableStateListOf<Int>() }
 
     // Sync text fields
     LaunchedEffect(exerciseTime) {
@@ -421,33 +459,23 @@ fun PTTimerScreen() {
             totalTimeTextFieldValue = TextFieldValue(text = newText)
         }
     }
-
-    LaunchedEffect(soundPool, context) {
-        AppSoundIds.EXERCISE_START_SOUND_ID = soundPool.load(context, R.raw.exercise_start, 1)
-        AppSoundIds.EXERCISE_REST_SOUND_ID = soundPool.load(context, R.raw.exercise_rest, 1)
-        AppSoundIds.EXERCISE_COMPLETE_SOUND_ID = soundPool.load(context, R.raw.exercise_complete, 1)
-        println("Sound IDs: Start=${AppSoundIds.EXERCISE_START_SOUND_ID}, Rest=${AppSoundIds.EXERCISE_REST_SOUND_ID}, Complete=${AppSoundIds.EXERCISE_COMPLETE_SOUND_ID}")
-    }
-
-    DisposableEffect(Unit) { onDispose { soundPool.release() } }
-
-    // Timer states
+        // Timer states
     val coroutineScope = rememberCoroutineScope()
     var timerJob by remember { mutableStateOf<Job?>(null) }
-    var timeLeftInCurrentPhaseMs by remember { mutableStateOf(0.0) }
-    var overallElapsedTimeMs by remember { mutableStateOf(0.0) }
-    var currentSetsRemaining by remember { mutableStateOf(0.0) }
+    var timeLeftInCurrentPhaseMs by remember { mutableDoubleStateOf(0.0) }
+    var overallElapsedTimeMs by remember { mutableDoubleStateOf(0.0) }
+    var currentSetsRemaining by remember { mutableDoubleStateOf(0.0) }
     var isExercisePhase by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf("Ready") }
     var isRunning by remember { mutableStateOf(false) }
     var isPaused by remember { mutableStateOf(false) }
-    var calculatedInitialTotalWorkoutTimeMs by remember { mutableStateOf(0.0) }
-    var pausedTimeLeftInCurrentPhaseMs by remember { mutableStateOf(0.0) }
-    var pausedOverallElapsedTimeMs by remember { mutableStateOf(0.0) }
+    var calculatedInitialTotalWorkoutTimeMs by remember { mutableDoubleStateOf(0.0) }
+    var pausedTimeLeftInCurrentPhaseMs by remember { mutableDoubleStateOf(0.0) }
+    var pausedOverallElapsedTimeMs by remember { mutableDoubleStateOf(0.0) }
     var pausedIsExercisePhase by remember { mutableStateOf(true) }
-    var pausedCurrentSetsRemaining by remember { mutableStateOf(0.0) }
+    var pausedCurrentSetsRemaining by remember { mutableDoubleStateOf(0.0) }
     var pausedStatus by remember { mutableStateOf("") }
-    var pausedCalculatedInitialTotalWorkoutTimeMs by remember { mutableStateOf(0.0) }
+    var pausedCalculatedInitialTotalWorkoutTimeMs by remember { mutableDoubleStateOf(0.0) }
     val decimalFormat = remember {
         DecimalFormat("0.0", DecimalFormatSymbols(Locale.US))
     }
@@ -496,6 +524,7 @@ fun PTTimerScreen() {
     }
 
     fun validateAndSave(
+        editor: SharedPreferences.Editor?,
         textValue: String,
         isInteger: Boolean,
         minValue: Double = 0.0,
@@ -511,7 +540,7 @@ fun PTTimerScreen() {
             } else {
                 onError(null)
                 onSuccess(0.0)
-                editor.putString(prefKey, "0").apply()
+                editor?.putString(prefKey, "0")?.apply()
                 return
             }
         }
@@ -523,16 +552,18 @@ fun PTTimerScreen() {
         } else {
             onError(null)
             onSuccess(parsedValue)
-            editor.putString(prefKey, textValue).apply()
+            editor?.putString(prefKey, textValue)?.apply()
         }
     }
 
-    fun startTimer() {
+    fun startTimer()
+    {
         var hasError = false
         if (exerciseTime <= 0) { exerciseError = "Must be > 0"; hasError = true } else { exerciseError = null }
         if (sets <= 0 && totalTime <= 0) { setsError = "Sets or total time must be > 0"; hasError = true } else { setsError = null }
 
         validateAndSave(
+            editor = editor,
             restTextFieldValue.text,
             false,
             0.0,
@@ -546,6 +577,7 @@ fun PTTimerScreen() {
         }
 
         validateAndSave(
+            editor = editor,
             totalTimeTextFieldValue.text,
             false,
             0.0,
@@ -565,8 +597,8 @@ fun PTTimerScreen() {
         exerciseError = null; restError = null; setsError = null; totalTimeError = null
         workoutCompleted.value = false
 
-        editor.putString("rest_time", if (restTime == 0.0) "0" else restTime.toString()).apply()
-        editor.putString("total_time", if (totalTime == 0.0) "0" else totalTime.toString()).apply()
+        editor?.putString("rest_time", if (restTime == 0.0) "0" else restTime.toString())?.apply()
+        editor?.putString("total_time", if (totalTime == 0.0) "0" else totalTime.toString())?.apply()
 
         if (isPaused) {
             timeLeftInCurrentPhaseMs = pausedTimeLeftInCurrentPhaseMs
@@ -627,8 +659,7 @@ fun PTTimerScreen() {
         if (isRunning) {
             timerJob = coroutineScope.launch {
                 timerCoroutine(
-                    soundPool = soundPool,
-                    activeStreamIds = activeStreamIds,
+                    playSoundAction = onPlaySound,
                     workoutCompleted = workoutCompleted,
                     initialTimeLeftInPhaseMs = timeLeftInCurrentPhaseMs,
                     initialOverallElapsedTimeMs = overallElapsedTimeMs,
@@ -785,6 +816,7 @@ fun PTTimerScreen() {
                     isError = exerciseError != null,
                     onValidate = {
                         validateAndSave(
+                            editor = editor,
                             exerciseTextFieldValue.text,
                             false,
                             0.01,
@@ -805,6 +837,7 @@ fun PTTimerScreen() {
                     isError = restError != null,
                     onValidate = {
                         validateAndSave(
+                            editor = editor,
                             restTextFieldValue.text,
                             false,
                             0.0,
@@ -825,6 +858,7 @@ fun PTTimerScreen() {
                     isError = setsError != null,
                     onValidate = {
                         validateAndSave(
+                            editor = editor,
                             setsTextFieldValue.text,
                             true,
                             0.0,
@@ -845,6 +879,7 @@ fun PTTimerScreen() {
                     isError = totalTimeError != null,
                     onValidate = {
                         validateAndSave(
+                            editor = editor,
                             totalTimeTextFieldValue.text,
                             false,
                             0.0,
