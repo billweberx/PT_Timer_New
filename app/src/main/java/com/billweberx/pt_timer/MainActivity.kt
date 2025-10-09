@@ -41,6 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DecimalFormat
 import androidx.compose.ui.tooling.preview.Preview
+import android.content.res.Configuration
 
 // Required import for MenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -120,7 +121,12 @@ class MainActivity : ComponentActivity() {
             audioManager.abandonAudioFocus(null)
         }
     }
-    @Preview(showBackground = true)
+    @Preview(
+        showBackground = true,
+        showSystemUi = true,
+        uiMode = Configuration.UI_MODE_NIGHT_YES // <-- Make sure it uses the right Configuration
+    )
+
     @Composable
     fun DefaultPreview() {
         PT_TimerTheme {
