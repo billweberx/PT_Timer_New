@@ -3,7 +3,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.compiler) // Change this back
+
 }
 
 android {
@@ -40,6 +41,9 @@ android {
      buildFeatures {
         compose = true
     }
+//    composeOptions {
+//        kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()
+//    }
 }
 
 dependencies {
@@ -51,7 +55,11 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
+    // Manually define the Material 3 version to a known stable version
+    //implementation("androidx.compose.material3:material3:1.2.1")
     implementation(libs.androidx.compose.material3)
+    //implementation("androidx.compose.material:material-icons-extended-android:1.7.8")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
     testImplementation(libs.junit)
@@ -61,6 +69,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-    implementation(libs.material)
+    //implementation(libs.material)
+    implementation(libs.androidx.navigation.compose)
 
 }
