@@ -9,16 +9,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
@@ -599,18 +600,35 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
         item {
             // Control Buttons
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(onClick = onPlayPauseClick) {
+                // Play/Pause Button with color logic
+                Button(
+                    onClick = onPlayPauseClick,
+                    colors = if (isRunning && !isPaused) {
+                        // Pause is default color
+                        ButtonDefaults.buttonColors()
+                    } else {
+                        // Play is light green
+                        ButtonDefaults.buttonColors(containerColor = Color(0xFFC8E6C9))
+                    }
+                ) {
                     Icon(
                         imageVector = if (isRunning && !isPaused) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isRunning && !isPaused) "Pause" else "Play"
                     )
                 }
-                Button(onClick = onStopClick, enabled = isRunning || isPaused) {
+
+                // Stop Button with red color
+                Button(
+                    onClick = onStopClick,
+                    enabled = isRunning || isPaused,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF9A9A))
+                ) {
                     Icon(imageVector = Icons.Default.Stop, contentDescription = "Stop")
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
+
 
         item {
             // --- Dropdown for Selecting a Setup ---
@@ -646,7 +664,6 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // --- NEW, REORGANIZED SAVE AND NAVIGATION AREA ---
         item {
             // Text field now takes the full width on its own line
             OutlinedTextField(
@@ -659,34 +676,37 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
         }
 
         item {
-            // Buttons are now on the same row with shorter names
+            // Buttons are now on the same row with colors
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly, // Spaces them out evenly
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // "Save" button
+                // "Save" button (Light Green)
                 Button(
                     onClick = { saveSetup(newSetupName.text) },
-                    enabled = newSetupName.text.isNotBlank()
+                    enabled = newSetupName.text.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC8E6C9))
                 ) {
                     Text("Save")
                 }
 
-                // "Delete" button
+                // "Delete" button (Light Red)
                 Button(
                     onClick = { selectedSetup?.let { deleteSetup(it) } },
-                    enabled = selectedSetup != null // Only enabled when a setup is selected
+                    enabled = selectedSetup != null,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF9A9A))
                 ) {
                     Text("Delete")
                 }
 
-                // "Setup" button
+                // "Setup" button (Default Color)
                 Button(onClick = _onNavigateToSetup) {
                     Text("Setup")
                 }
             }
         }
+
     }
 }
 
