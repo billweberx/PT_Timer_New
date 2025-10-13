@@ -20,11 +20,10 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -32,6 +31,25 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            // This line defines the app name specifically for debug builds.
+            resValue("string", "app_name", "PT Timer Debug")
+        }
+    }
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.all {
+            val output = this
+            val project = "PT_Timer" // Or whatever you want the base name to be
+            val versionName = variant.versionName
+            val newApkName = "$project-$versionName.apk"
+
+            if (output is com.android.build.gradle.internal.api.ApkVariantOutputImpl) {
+                output.outputFileName = newApkName
+            }
         }
     }
     compileOptions {
