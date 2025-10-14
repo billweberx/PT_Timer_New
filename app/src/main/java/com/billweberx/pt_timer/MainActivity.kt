@@ -46,8 +46,6 @@ import kotlin.math.roundToInt
 import java.io.File
 import androidx.core.net.toUri
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.unit.dp
 
 
 // Define AppSoundIds
@@ -503,9 +501,7 @@ fun PTTimerScreen(viewModel: TimerViewModel, _onNavigateToSetup: () -> Unit) {
 
                 val initialTime = if (isResumingFromPause) pausedTimeLeftInCurrentPhaseMs else timeLeftInCurrentPhaseMs
                 // If there's a delay, we start in the "delay" phase, which is not the "exercise" phase.
-                val initialIsExercise = if (isResumingFromPause) status == "Exercise" else !hasDelay
                 val initialSets = if (isResumingFromPause) pausedCurrentSetsRemaining.toInt() else sets.toInt()
-
                 // Find the timerCoroutine function definition and add the new parameter to it.
                 timerCoroutine(
                     isSetsMode = useSetsMode,
