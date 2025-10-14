@@ -1,18 +1,22 @@
 package com.billweberx.pt_timer
 
 import android.content.Context
+import android.content.Intent
 import android.media.SoundPool
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.*
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -32,11 +36,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.billweberx.pt_timer.ui.theme.PT_TimerTheme
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
+import java.io.File
+import androidx.core.net.toUri
 
 // Define AppSoundIds
 object AppSoundIds {
@@ -45,7 +53,7 @@ object AppSoundIds {
     var EXERCISE_COMPLETE_SOUND_ID: Int = 0
 }
 
-// Define SetupConfig data class
+// Define SetupConfig data class for storing timer values
 data class SetupConfig(
     val exerciseTime: Double,
     val restTime: Double,
@@ -53,6 +61,9 @@ data class SetupConfig(
     val totalTime: Double,
     val delayTime: Double
 )
+
+// Data class for storing a named setup in a file
+data class TimerSetup(val name: String, val config: SetupConfig)
 
 // Sealed class for Navigation
 sealed class Screen(val route: String) {
@@ -68,17 +79,129 @@ fun formatTime(timeInMillis: Double): String {
     return String.format(Locale.US, "%02d:%02d", minutes, seconds)
 }
 
+
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class) // Added for Scaffold
+
+    // --- MODERN FILE HANDLING ---
+    private lateinit var saveFileLauncher: ActivityResultLauncher<Intent>
+    private lateinit var openFileLauncher: ActivityResultLauncher<Intent>
+
+    // We will use a shared ViewModel to communicate results back to the UI
+    private val viewModel = TimerViewModel()
+
+    private var setupsForSaving: List<TimerSetup> = emptyList()
+
+    // 1. Silent saving to private app storage
+    fun saveToPrivateFile(setups: List<TimerSetup>) {
+        try {
+            val file = File(filesDir, "pt_timer_setups.json")
+            val json = GsonBuilder().setPrettyPrinting().create().toJson(setups)
+            file.writeText(json)
+            // No Toast needed for silent save
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Error during silent save.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // 2. Silent loading from private app storage
+    fun loadFromPrivateFile(): List<TimerSetup> {
+        try {
+            val file = File(filesDir, "pt_timer_setups.json")
+            if (!file.exists()) return emptyList()
+
+            val json = file.readText()
+            return Gson().fromJson(json, object : TypeToken<List<TimerSetup>>() {}.type) ?: emptyList()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Error loading setups.", Toast.LENGTH_SHORT).show()
+        }
+        return emptyList()
+    }
+
+    // EXPORT: Use the file picker to save a copy of the private file
+    fun exportSetups() {
+        setupsForSaving = viewModel.loadedSetups
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, "pt_timer_backup.json")
+
+            // Only set the initial URI on Android 8.0 (API 26) and higher
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, "content://com.android.externalstorage.documents/document/primary:Documents".toUri())
+            }
+
+        }
+        if (::saveFileLauncher.isInitialized) {
+            saveFileLauncher.launch(intent)
+        }
+    }
+
+    // IMPORT: Use the file picker to load a file and overwrite private storage
+    fun importSetups() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+
+            // Only set the initial URI on Android 8.0 (API26) and higher
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, "content://com.android.externalstorage.documents/document/primary:Documents".toUri())
+            }
+
+        }
+        if (::openFileLauncher.isInitialized) {
+            openFileLauncher.launch(intent)
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize the launchers here, in onCreate, where it's safe.
+        saveFileLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == RESULT_OK) {
+                result.data?.data?.let { uri ->
+                    try {
+                        val json = GsonBuilder().setPrettyPrinting().create().toJson(setupsForSaving)
+                        contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+                        Toast.makeText(this, "File saved", Toast.LENGTH_SHORT).show()
+                        viewModel.updateSetups(setupsForSaving) // Update the ViewModel
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "Error saving file", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
+        openFileLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == RESULT_OK) {
+                result.data?.data?.let { uri ->
+                    try {
+                        val json = contentResolver.openInputStream(uri)?.bufferedReader().use { it?.readText() }
+                        val setups = Gson().fromJson<MutableList<TimerSetup>>(json, object : TypeToken<MutableList<TimerSetup>>() {}.type) ?: mutableListOf()
+                        Toast.makeText(this, "${setups.size} setups loaded", Toast.LENGTH_SHORT).show()
+                        saveToPrivateFile(setups)
+                        viewModel.updateSetups(setups) // Update the ViewModel
+                        Toast.makeText(this, "${setups.size} setups imported successfully.", Toast.LENGTH_SHORT).show()
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "Error reading file", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
+
         setContent {
             PT_TimerTheme {
-                // Use Scaffold to provide proper layout structure
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // The content of your app, with padding applied by the Scaffold
                     Box(modifier = Modifier.padding(innerPadding)) {
-                        AppNavigation()
+                        AppNavigation(viewModel)
                     }
                 }
             }
@@ -86,14 +209,62 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-fun playSound(
-    soundPool: SoundPool,
-    activeStreamIds: SnapshotStateList<Int>,
-    soundId: Int
-) {
-    activeStreamIds.forEach { streamId ->
-        soundPool.stop(streamId)
+// A simple data holder class to bridge MainActivity and the UI
+class TimerViewModel {
+    var loadedSetups by mutableStateOf<List<TimerSetup>>(emptyList())
+        private set
+
+    fun updateSetups(newSetups: List<TimerSetup>) {
+        loadedSetups = newSetups
     }
+}
+
+
+// --- NAVIGATION COMPOSABLE ---
+@Composable
+fun AppNavigation(viewModel: TimerViewModel) {
+    val navController = rememberNavController()
+    NavHost(navController = navController, startDestination = Screen.Main.route) {
+        composable(Screen.Main.route) {
+            PTTimerScreen(
+                viewModel = viewModel,
+                _onNavigateToSetup = { navController.navigate(Screen.Setup.route) }
+            )
+        }
+        composable(Screen.Setup.route) { SetupScreen(onNavigateToMain = { navController.popBackStack() }) }
+    }
+}
+
+// In your SetupScreen.kt or where SetupScreen is defined
+@Composable
+fun SetupScreen(onNavigateToMain: () -> Unit) {
+    val context = LocalContext.current
+    val mainActivity = context as MainActivity
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Button(onClick = { mainActivity.importSetups() }) {
+            Text("Import Setups from Backup")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = { mainActivity.exportSetups() }) {
+            Text("Export Setups to Backup")
+        }
+        Spacer(modifier = Modifier.height(32.dp))
+        Button(onClick = onNavigateToMain) { Text("Back to Main") }
+    }
+}
+
+
+// --- SOUND AND TIMER LOGIC (Not part of any class) ---
+
+fun playSound(soundPool: SoundPool, activeStreamIds: SnapshotStateList<Int>, soundId: Int) {
+    activeStreamIds.forEach { streamId -> soundPool.stop(streamId) }
     activeStreamIds.clear()
 
     if (soundId != 0) {
@@ -108,25 +279,18 @@ suspend fun timerCoroutine(
     isSetsMode: Boolean,
     exerciseDurationMs: Double,
     restDurationMs: Double,
-    targetTotalWorkoutTimeMs: Double,    workoutCompleted: MutableState<Boolean>,
+    targetTotalWorkoutTimeMs: Double,
+    workoutCompleted: MutableState<Boolean>,
     isResuming: Boolean,
     initialTimeLeftInPhaseMs: Double,
     initialIsExercisePhase: Boolean,
     initialSetsRemaining: Int,
     playSoundAction: (soundId: Int) -> Unit,
-    // The onUpdate callback now receives all the data needed
-    onUpdate: (
-        timeLeftInPhase: Double,
-        statusText: String,
-        secondaryValue: Double
-    ) -> Unit,
+    onUpdate: (timeLeftInPhase: Double, statusText: String, secondaryValue: Double) -> Unit,
     onComplete: (finalStatus: String) -> Unit
 ) {
     val tickIntervalMs = 100L
-
-    if (!isResuming) {
-        playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
-    }
+    if (!isResuming) playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
 
     if (isSetsMode) {
         var setsLeft = initialSetsRemaining
@@ -137,14 +301,8 @@ suspend fun timerCoroutine(
             while (currentTimeLeftInPhaseMs > 0) {
                 delay(tickIntervalMs)
                 currentTimeLeftInPhaseMs -= tickIntervalMs
-                // In sets mode, secondary value is the number of sets left
-                onUpdate(
-                    currentTimeLeftInPhaseMs,
-                    if (currentPhaseIsExercise) "Exercise" else "Rest",
-                    setsLeft.toDouble()
-                )
+                onUpdate(currentTimeLeftInPhaseMs, if (currentPhaseIsExercise) "Exercise" else "Rest", setsLeft.toDouble())
             }
-
             if (currentPhaseIsExercise) {
                 setsLeft--
                 if (setsLeft <= 0) break
@@ -161,28 +319,16 @@ suspend fun timerCoroutine(
         var totalTimeLeftMs = if (isResuming) initialTimeLeftInPhaseMs else targetTotalWorkoutTimeMs
         var currentPhaseIsExercise = initialIsExercisePhase
         var phaseTimeLeftMs = if (isResuming) initialTimeLeftInPhaseMs else exerciseDurationMs
-
-        // This is a special case for resuming in total time mode
-        if(isResuming) {
-            phaseTimeLeftMs = initialTimeLeftInPhaseMs
-        }
-
+        if(isResuming) phaseTimeLeftMs = initialTimeLeftInPhaseMs
 
         while (totalTimeLeftMs > 0) {
             while (phaseTimeLeftMs > 0 && totalTimeLeftMs > 0) {
                 delay(tickIntervalMs)
                 phaseTimeLeftMs -= tickIntervalMs
                 totalTimeLeftMs -= tickIntervalMs
-                // In total time mode, secondary value is the total time left
-                onUpdate(
-                    phaseTimeLeftMs,
-                    if (currentPhaseIsExercise) "Exercise" else "Rest",
-                    totalTimeLeftMs
-                )
+                onUpdate(phaseTimeLeftMs, if (currentPhaseIsExercise) "Exercise" else "Rest", totalTimeLeftMs)
             }
-
             if (totalTimeLeftMs <= 0) break
-
             if (currentPhaseIsExercise) {
                 currentPhaseIsExercise = false
                 phaseTimeLeftMs = restDurationMs
@@ -194,49 +340,34 @@ suspend fun timerCoroutine(
             }
         }
     }
-
     onComplete("Workout Complete")
     workoutCompleted.value = true
     playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
 }
 
-@Composable
-fun AppNavigation() {
-    val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = Screen.Main.route) {
-        composable(Screen.Main.route) {
-            PTTimerScreen(_onNavigateToSetup = { navController.navigate(Screen.Setup.route) })
-        }
-        composable(Screen.Setup.route) {
-            SetupScreen(onNavigateToMain = { navController.popBackStack() })
-        }
-    }
-}
-
-@Composable
-fun SetupScreen(onNavigateToMain: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("This is the Setup Screen")
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onNavigateToMain) {
-            Text("Main")
-        }
-    }
-}
-
+// --- MAIN UI COMPOSABLE ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
+@Suppress("LocalVariableName")
+fun PTTimerScreen(viewModel: TimerViewModel, _onNavigateToSetup: () -> Unit) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val mainActivity = context as MainActivity
     val sharedPreferences = remember { context.getSharedPreferences("PT_Timer_Prefs", Context.MODE_PRIVATE) }
     val editor = remember { sharedPreferences.edit() }
-
+    // --- Data Handling ---
+    fun formatForTextField(value: Double, isInteger: Boolean = false): String {
+        return if (isInteger) value.toInt().toString()
+        else if (value == 0.0) "0"
+        else if (value % 1.0 == 0.0) value.toInt().toString()
+        else value.toString()
+    }
     // --- State Variables ---
+    val loadedSetups = viewModel.loadedSetups
+    val setupNames = remember(loadedSetups) {
+        mutableStateListOf<String>().apply { addAll(loadedSetups.map { it.name }.sorted()) }
+    }
+
     var exerciseTime by remember { mutableDoubleStateOf(0.0) }
     var restTime by remember { mutableDoubleStateOf(0.0) }
     var sets by remember { mutableDoubleStateOf(0.0) }
@@ -252,7 +383,6 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
     var setsError by remember { mutableStateOf<String?>(null) }
     var totalTimeError by remember { mutableStateOf<String?>(null) }
 
-    val setupNames = remember { mutableStateListOf<String>() }
     var selectedSetup by remember { mutableStateOf<String?>(null) }
     var newSetupName by remember { mutableStateOf(TextFieldValue("")) }
     var expanded by remember { mutableStateOf(false) }
@@ -264,12 +394,31 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
     var timerJob by remember { mutableStateOf<Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
     var status by remember { mutableStateOf("Ready") }
-    // NEW STATE: For the secondary display (sets or total time)
     var secondaryDisplayValue by remember { mutableDoubleStateOf(0.0) }
-
     var pausedTimeLeftInCurrentPhaseMs by remember { mutableDoubleStateOf(0.0) }
     var pausedCurrentSetsRemaining by remember { mutableDoubleStateOf(0.0) }
     val workoutCompleted = remember { mutableStateOf(false) }
+
+    // Automatically load setups from the private file when the app starts
+    LaunchedEffect(Unit) {
+        val setups = mainActivity.loadFromPrivateFile()
+        viewModel.updateSetups(setups)
+
+        // --- ADD THIS LOGIC ---
+        // After loading, also populate the UI with the first setup if it exists.
+        setups.firstOrNull()?.let { setup ->
+            val config = setup.config
+            exerciseTime = config.exerciseTime
+            restTime = config.restTime
+            sets = config.sets
+            totalTime = config.totalTime
+            exerciseTextFieldValue = TextFieldValue(formatForTextField(exerciseTime))
+            restTextFieldValue = TextFieldValue(formatForTextField(restTime))
+            setsTextFieldValue = TextFieldValue(formatForTextField(sets, isInteger = true))
+            totalTimeTextFieldValue = TextFieldValue(formatForTextField(totalTime))
+            selectedSetup = setup.name
+        }
+    }
 
     // --- Sound Pool ---
     val soundPool = remember {
@@ -281,164 +430,37 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
     }
     val activeStreamIds = remember { mutableStateListOf<Int>() }
 
-    // --- Data Handling ---
-    fun formatForTextField(value: Double, isInteger: Boolean = false): String {
-        return if (isInteger) value.toInt().toString()
-        else if (value == 0.0) "0"
-        else if (value % 1.0 == 0.0) value.toInt().toString()
-        else value.toString()
-    }
-
-    val gson = remember { Gson() }
-    val fileName = "pt_timer_setups.json"
-
-    fun saveSetupsToFile(setups: Map<String, SetupConfig>) {
-        val jsonString = gson.toJson(setups)
-        try {
-            context.openFileOutput(fileName, Context.MODE_PRIVATE).use {
-                it.write(jsonString.toByteArray())
-            }
-        } catch (e: Exception) {
-            e.printStackTrace() // Log any errors
-        }
-    }
-
-    fun loadSetupsFromFile(): MutableMap<String, SetupConfig> {
-        return try {
-            val jsonString = context.openFileInput(fileName).bufferedReader().use { it.readText() }
-            val type = object : com.google.gson.reflect.TypeToken<MutableMap<String, SetupConfig>>() {}.type
-            gson.fromJson(jsonString, type) ?: mutableMapOf()
-        } catch (_: java.io.FileNotFoundException) {
-            mutableMapOf() // File doesn't exist yet, return an empty map
-        } catch (e: Exception) {
-            e.printStackTrace()
-            mutableMapOf() // Return empty map on any other error
-        }
-    }
-
-
-    LaunchedEffect(Unit) {
-        // Load the last-used timer values (still ok to keep in SharedPreferences)
-        fun loadDouble(key: String, default: Double): Double {
-            val stringValue = sharedPreferences.getString(key, default.toString())
-            return stringValue?.toDoubleOrNull() ?: default
-        }
-        exerciseTime = loadDouble("exercise_time", 30.0)
-        restTime = loadDouble("rest_time", 0.0)
-        sets = loadDouble("sets", 3.0)
-        totalTime = loadDouble("total_time", 0.0)
-
-        // *** NEW: Load setup names from the file ***
-        val setupsFromFile = loadSetupsFromFile()
-        setupNames.clear()
-        setupNames.addAll(setupsFromFile.keys.sorted())
-
-        // Update TextFields with last-used values
-        exerciseTextFieldValue = TextFieldValue(text = formatForTextField(exerciseTime))
-        restTextFieldValue = TextFieldValue(text = formatForTextField(restTime))
-        setsTextFieldValue = TextFieldValue(text = formatForTextField(sets, isInteger = true))
-        totalTimeTextFieldValue = TextFieldValue(text = formatForTextField(totalTime))
-    }
-
-
-    // *** THIS IS THE CORRECTED validateAndSave FUNCTION ***
-    fun validateAndSave(
-        textValue: String,
-        allowZero: Boolean,
-        onError: (String?) -> Unit,
-        onSuccess: (Double) -> Unit
-    ) {
+      // --- Input Validation ---
+    fun validateAndSave(textValue: String, allowZero: Boolean, onError: (String?) -> Unit, onSuccess: (Double) -> Unit) {
         if (textValue.isBlank()) {
-            if (!allowZero) onError("Cannot be empty") else {
-                onError(null); onSuccess(0.0)
-            }
+            if (!allowZero) onError("Cannot be empty") else { onError(null); onSuccess(0.0) }
             return
         }
         val parsedValue = textValue.toDoubleOrNull()
         if (parsedValue == null) onError("Invalid")
         else if (!allowZero && parsedValue == 0.0) onError("Not 0")
-        else {
-            onError(null); onSuccess(parsedValue)
-        }
+        else { onError(null); onSuccess(parsedValue) }
     }
 
-    fun loadSetup(name: String) {
-        val allSetups = loadSetupsFromFile()
-        val config = allSetups[name]
-        config?.let {
-            // This is the corrected section
-            exerciseTime = it.exerciseTime
-            restTime = it.restTime
-
-            sets = it.sets
-            totalTime = it.totalTime
-
-            exerciseTextFieldValue = TextFieldValue(formatForTextField(exerciseTime))
-            restTextFieldValue = TextFieldValue(formatForTextField(restTime))
-            setsTextFieldValue = TextFieldValue(formatForTextField(sets, isInteger = true))
-            totalTimeTextFieldValue = TextFieldValue(formatForTextField(totalTime))
-            selectedSetup = name
-        }
-    }
-
-
-    // --- NEW, CORRECTED saveSetup ---
-    fun saveSetup(name: String) {if (name.isBlank()) return
-
-        val currentSetups = loadSetupsFromFile()
-        val newConfig = SetupConfig(exerciseTime, restTime, sets, totalTime, delayTime = 0.0)
-        currentSetups[name] = newConfig
-        saveSetupsToFile(currentSetups)
-
-        // Update the UI state
-        if (!setupNames.contains(name)) {
-            setupNames.add(name)
-            setupNames.sort()
-        }
-
-        newSetupName = TextFieldValue("")
-        selectedSetup = name
-        expanded = false
-        focusManager.clearFocus()
-    }
-
-    fun deleteSetup(name: String) {
-        if (name.isBlank()) return
-        val currentSetups = loadSetupsFromFile()
-        if (currentSetups.containsKey(name)) {
-            currentSetups.remove(name)
-            saveSetupsToFile(currentSetups)
-
-            // Update the UI state after deleting
-            setupNames.remove(name)
-            selectedSetup = null // Clear the selection from the dropdown display
-        }
-    }
-
-        val onPlayPauseClick = {
+    // --- Timer Controls ---
+    val onPlayPauseClick = {
         if (isRunning) {
             timerJob?.cancel()
             isPaused = true
             isRunning = false
             pausedTimeLeftInCurrentPhaseMs = timeLeftInCurrentPhaseMs
-            // This is incorrect for total time mode, but we will leave it for now
-            // as resuming total time mode is complex.
             pausedCurrentSetsRemaining = secondaryDisplayValue
         } else {
             val useSetsMode = sets > 0
             val isResumingFromPause = isPaused
-
             timerJob = coroutineScope.launch {
                 isRunning = true
-
-                // Correctly set initial state before starting coroutine
                 if (!isResumingFromPause) {
                     timeLeftInCurrentPhaseMs = exerciseTime * 1000
                     secondaryDisplayValue = if (useSetsMode) sets else totalTime * 1000
                 }
-
                 val initialTime = if (isResumingFromPause) pausedTimeLeftInCurrentPhaseMs else exerciseTime * 1000
-                val initialIsExercise = if (isResumingFromPause) true else true
+                val initialIsExercise = true
                 val initialSets = if (isResumingFromPause) pausedCurrentSetsRemaining.toInt() else sets.toInt()
 
                 timerCoroutine(
@@ -469,18 +491,15 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
         }
     }
 
-    // *** THIS IS THE CORRECTED onStopClick FUNCTION ***
     val onStopClick = {
         timerJob?.cancel()
         isRunning = false
         isPaused = false
-        timeLeftInCurrentPhaseMs = exerciseTime * 1000
+        timeLeftInCurrentPhaseMs = 0.0
         secondaryDisplayValue = 0.0
         status = "Ready"
         workoutCompleted.value = false
         focusManager.clearFocus()
-
-        // Manually save the current timer values as the "last used" state
         editor.putString("exercise_time", exerciseTime.toString())
         editor.putString("rest_time", restTime.toString())
         editor.putString("sets", sets.toString())
@@ -488,6 +507,7 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
         editor.apply()
     }
 
+    // --- UI Layout ---
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -497,145 +517,56 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
         verticalArrangement = Arrangement.Top
     ) {
         item {
-            // Main status: "Exercise", "Rest", "Ready"
             Text(text = status, fontSize = 24.sp, style = MaterialTheme.typography.headlineMedium)
-
-            // Secondary Status Display: Shows Sets or Total Time
             if (isRunning || isPaused) {
-                val secondaryText = if (sets > 0) {
-                    "Set: ${secondaryDisplayValue.toInt()}"
-                } else {
-                    "Total Time: ${formatTime(secondaryDisplayValue)}"
-                }
-                Text(
-                    text = secondaryText,
-                    fontSize = 20.sp,
-                    style = MaterialTheme.typography.headlineSmall
-                )
+                val secondaryText = if (sets > 0) "Set: ${secondaryDisplayValue.toInt()}" else "Total Time: ${formatTime(secondaryDisplayValue)}"
+                Text(text = secondaryText, fontSize = 20.sp, style = MaterialTheme.typography.headlineSmall)
             }
-
             Spacer(modifier = Modifier.height(8.dp))
-            // Main Timer: Always shows time left in current phase
-            Text(
-                text = formatTime(timeLeftInCurrentPhaseMs),
-                fontSize = 72.sp,
-                style = MaterialTheme.typography.displayLarge
-            )
+            Text(text = formatTime(timeLeftInCurrentPhaseMs), fontSize = 72.sp, style = MaterialTheme.typography.displayLarge)
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // --- All other items remain the same ---
         item {
-            // Input Fields
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                TimerInputColumn(
-                    label = "Exercise Time",
-                    value = exerciseTextFieldValue,
-                    onValueChange = {
-                        exerciseTextFieldValue = it
-                        // Note the corrected call without the "prefKey"
-                        validateAndSave(
-                            it.text,
-                            false,
-                            { e -> exerciseError = e }) { v -> exerciseTime = v }
-                    },
-                    isError = exerciseError != null,
-                    errorMessage = exerciseError,
-                    keyboardType = KeyboardType.Decimal,
-                    modifier = Modifier.weight(1f)
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                TimerInputColumn(label = "Exercise Time", value = exerciseTextFieldValue, onValueChange = {
+                    exerciseTextFieldValue = it
+                    validateAndSave(it.text, false, { e -> exerciseError = e }) { v -> exerciseTime = v }
+                }, isError = exerciseError != null, errorMessage = exerciseError, modifier = Modifier.weight(1f))
                 Spacer(modifier = Modifier.width(8.dp))
-                TimerInputColumn(
-                    label = "Rest Time",
-                    value = restTextFieldValue,
-                    onValueChange = {
-                        restTextFieldValue = it
-                        validateAndSave(it.text, true, { e -> restError = e }) { v -> restTime = v }
-                    },
-                    isError = restError != null,
-                    errorMessage = restError,
-                    keyboardType = KeyboardType.Decimal,
-                    modifier = Modifier.weight(1f)
-                )
+                TimerInputColumn(label = "Rest Time", value = restTextFieldValue, onValueChange = {
+                    restTextFieldValue = it
+                    validateAndSave(it.text, true, { e -> restError = e }) { v -> restTime = v }
+                }, isError = restError != null, errorMessage = restError, modifier = Modifier.weight(1f))
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                TimerInputColumn(
-                    label = "Sets",
-                    value = setsTextFieldValue,
-                    onValueChange = {
-                        setsTextFieldValue = it
-                        validateAndSave(it.text, true, { e -> setsError = e }) { v -> sets = v }
-                    },
-                    isError = setsError != null,
-                    errorMessage = setsError,
-                    keyboardType = KeyboardType.Number,
-                    modifier = Modifier.weight(1f)
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                TimerInputColumn(label = "Sets", value = setsTextFieldValue, onValueChange = {
+                    setsTextFieldValue = it
+                    validateAndSave(it.text, true, { e -> setsError = e }) { v -> sets = v }
+                }, isError = setsError != null, errorMessage = setsError, keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
                 Spacer(modifier = Modifier.width(8.dp))
-                TimerInputColumn(
-                    label = "Total Time",
-                    value = totalTimeTextFieldValue,
-                    onValueChange = {
-                        totalTimeTextFieldValue = it
-                        validateAndSave(
-                            it.text,
-                            true,
-                            { e -> totalTimeError = e }) { v -> totalTime = v }
-                    },
-                    isError = totalTimeError != null,
-                    errorMessage = totalTimeError,
-                    keyboardType = KeyboardType.Decimal,
-                    modifier = Modifier.weight(1f)
-                )
+                TimerInputColumn(label = "Total Time", value = totalTimeTextFieldValue, onValueChange = {
+                    totalTimeTextFieldValue = it
+                    validateAndSave(it.text, true, { e -> totalTimeError = e }) { v -> totalTime = v }
+                }, isError = totalTimeError != null, errorMessage = totalTimeError, modifier = Modifier.weight(1f))
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
 
         item {
-            // Control Buttons
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Play/Pause Button with color logic
-                Button(
-                    onClick = onPlayPauseClick,
-                    colors = if (isRunning && !isPaused) {
-                        // Pause is default color
-                        ButtonDefaults.buttonColors()
-                    } else {
-                        // Play is light green
-                        ButtonDefaults.buttonColors(containerColor = Color(0xFFC8E6C9))
-                    }
-                ) {
-                    Icon(
-                        imageVector = if (isRunning && !isPaused) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isRunning && !isPaused) "Pause" else "Play"
-                    )
+                Button(onClick = onPlayPauseClick, colors = if (isRunning && !isPaused) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(containerColor = Color(0xFFC8E6C9))) {
+                    Icon(imageVector = if (isRunning && !isPaused) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (isRunning && !isPaused) "Pause" else "Play")
                 }
-
-                // Stop Button with red color
-                Button(
-                    onClick = onStopClick,
-                    enabled = isRunning || isPaused,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF9A9A))
-                ) {
+                Button(onClick = onStopClick, enabled = isRunning || isPaused, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF9A9A))) {
                     Icon(imageVector = Icons.Default.Stop, contentDescription = "Stop")
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
 
-
         item {
-            // --- Dropdown for Selecting a Setup ---
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded } // Toggle on click
-            ) {
+            ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                 OutlinedTextField(
                     value = selectedSetup ?: "Select a Setup",
                     onValueChange = {},
@@ -646,16 +577,25 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
                         .menuAnchor()
                         .fillMaxWidth()
                 )
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
+                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     setupNames.forEach { name ->
-                        DropdownMenuItem(
-                            text = { Text(name) },
+                        DropdownMenuItem(text = { Text(name) },
                             onClick = {
-                                loadSetup(name)
-                                expanded = false // Close menu on selection
+                                val timerSetup = loadedSetups.firstOrNull { it.name == name }
+                                timerSetup?.let {
+                                    val config = it.config
+                                    exerciseTime = config.exerciseTime
+                                    restTime = config.restTime
+                                    sets = config.sets
+                                    totalTime = config.totalTime
+                                    exerciseTextFieldValue = TextFieldValue(formatForTextField(exerciseTime))
+                                    restTextFieldValue = TextFieldValue(formatForTextField(restTime))
+                                    setsTextFieldValue = TextFieldValue(formatForTextField(sets, isInteger = true))
+                                    totalTimeTextFieldValue = TextFieldValue(formatForTextField(totalTime))
+                                    exerciseError = null; restError = null; setsError = null; totalTimeError = null
+                                    selectedSetup = name
+                                }
+                                expanded = false
                             }
                         )
                     }
@@ -665,51 +605,77 @@ fun PTTimerScreen(_onNavigateToSetup: () -> Unit) {
         }
 
         item {
-            // Text field now takes the full width on its own line
             OutlinedTextField(
                 value = newSetupName,
                 onValueChange = { newSetupName = it },
                 label = { Text("New Setup Name") },
-                modifier = Modifier.fillMaxWidth(), // This makes it stretch
+                modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
         }
 
         item {
-            // Buttons are now on the same row with colors
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // "Save" button (Light Green)
+                // --- SAVE BUTTON ---
                 Button(
-                    onClick = { saveSetup(newSetupName.text) },
+                    // Inside the "Save" button's onClick
+                    onClick = {
+                        if (newSetupName.text.isNotBlank()) {
+                            val currentConfig = SetupConfig(exerciseTime, restTime, sets, totalTime, 0.0)
+                            val newTimerSetup = TimerSetup(newSetupName.text, currentConfig)
+
+                            val updatedSetups = loadedSetups.toMutableList().apply {
+                                removeAll { it.name == newTimerSetup.name }
+                                add(newTimerSetup)
+                            }
+                            // Silently save to private storage
+                            mainActivity.saveToPrivateFile(updatedSetups)
+                            // Update the UI
+                            viewModel.updateSetups(updatedSetups)
+
+                            newSetupName = TextFieldValue("")
+                            focusManager.clearFocus()
+                        }
+                    },
+
                     enabled = newSetupName.text.isNotBlank(),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC8E6C9))
                 ) {
                     Text("Save")
                 }
 
-                // "Delete" button (Light Red)
+                // --- DELETE BUTTON ---
                 Button(
-                    onClick = { selectedSetup?.let { deleteSetup(it) } },
+                    // Inside the "Delete" button's onClick
+                    onClick = {
+                        selectedSetup?.let { nameToDelete ->
+                            val updatedSetups = loadedSetups.filter { it.name != nameToDelete }
+                            mainActivity.saveToPrivateFile(updatedSetups)
+                            viewModel.updateSetups(updatedSetups)
+                        }
+                    },
+
                     enabled = selectedSetup != null,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF9A9A))
                 ) {
                     Text("Delete")
                 }
 
-                // "Setup" button (Default Color)
+                // --- SETUP BUTTON ---
                 Button(onClick = _onNavigateToSetup) {
                     Text("Setup")
                 }
             }
         }
-
     }
 }
 
+
+// --- HELPER COMPOSABLE FOR INPUTS ---
 @Composable
 fun TimerInputColumn(
     label: String,
@@ -717,8 +683,8 @@ fun TimerInputColumn(
     onValueChange: (TextFieldValue) -> Unit,
     isError: Boolean,
     errorMessage: String?,
-    keyboardType: KeyboardType,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Decimal
 ) {
     Column(modifier = modifier) {
         OutlinedTextField(
@@ -731,20 +697,15 @@ fun TimerInputColumn(
             modifier = Modifier.fillMaxWidth()
         )
         if (isError && errorMessage != null) {
-            Text(
-                text = errorMessage,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-            )
+            Text(text = errorMessage, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, top = 4.dp))
         }
     }
 }
 
+// --- PREVIEW ---
 @Preview(showBackground = true)
 @Composable
 fun DefaultPreview() {
-    PT_TimerTheme {
-        AppNavigation()
-    }
+    // We can't easily preview the full app with the viewModel, so we provide a dummy one
+    AppNavigation(viewModel = TimerViewModel())
 }
