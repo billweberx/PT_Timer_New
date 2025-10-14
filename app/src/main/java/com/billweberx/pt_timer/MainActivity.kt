@@ -45,6 +45,10 @@ import java.util.Locale
 import kotlin.math.roundToInt
 import java.io.File
 import androidx.core.net.toUri
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.dp
+
 
 // Define AppSoundIds
 object AppSoundIds {
@@ -274,75 +278,106 @@ fun playSound(soundPool: SoundPool, activeStreamIds: SnapshotStateList<Int>, sou
         }
     }
 }
-
 suspend fun timerCoroutine(
     isSetsMode: Boolean,
+    delayDurationMs: Double, // <-- NEW
     exerciseDurationMs: Double,
     restDurationMs: Double,
     targetTotalWorkoutTimeMs: Double,
     workoutCompleted: MutableState<Boolean>,
     isResuming: Boolean,
     initialTimeLeftInPhaseMs: Double,
-    initialIsExercisePhase: Boolean,
     initialSetsRemaining: Int,
-    playSoundAction: (soundId: Int) -> Unit,
-    onUpdate: (timeLeftInPhase: Double, statusText: String, secondaryValue: Double) -> Unit,
-    onComplete: (finalStatus: String) -> Unit
+    initialStatus: String, // <-- NEW
+    playSoundAction: (Int) -> Unit,
+    onUpdate: (Double, String, Double) -> Unit,
+    onComplete: (String) -> Unit
 ) {
-    val tickIntervalMs = 100L
-    if (!isResuming) playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
+    var timeLeftInPhaseMs = initialTimeLeftInPhaseMs
+    var setsRemaining = initialSetsRemaining
+    var totalTimeElapsedMs = 0.0
 
-    if (isSetsMode) {
-        var setsLeft = initialSetsRemaining
-        var currentPhaseIsExercise = initialIsExercisePhase
-        var currentTimeLeftInPhaseMs = initialTimeLeftInPhaseMs
-
-        while (setsLeft > 0) {
-            while (currentTimeLeftInPhaseMs > 0) {
-                delay(tickIntervalMs)
-                currentTimeLeftInPhaseMs -= tickIntervalMs
-                onUpdate(currentTimeLeftInPhaseMs, if (currentPhaseIsExercise) "Exercise" else "Rest", setsLeft.toDouble())
-            }
-            if (currentPhaseIsExercise) {
-                setsLeft--
-                if (setsLeft <= 0) break
-                currentPhaseIsExercise = false
-                currentTimeLeftInPhaseMs = restDurationMs
-                playSoundAction(AppSoundIds.EXERCISE_REST_SOUND_ID)
-            } else {
-                currentPhaseIsExercise = true
-                currentTimeLeftInPhaseMs = exerciseDurationMs
-                playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
-            }
-        }
-    } else { // Total Time Mode
-        var totalTimeLeftMs = if (isResuming) initialTimeLeftInPhaseMs else targetTotalWorkoutTimeMs
-        var currentPhaseIsExercise = initialIsExercisePhase
-        var phaseTimeLeftMs = if (isResuming) initialTimeLeftInPhaseMs else exerciseDurationMs
-        if(isResuming) phaseTimeLeftMs = initialTimeLeftInPhaseMs
-
-        while (totalTimeLeftMs > 0) {
-            while (phaseTimeLeftMs > 0 && totalTimeLeftMs > 0) {
-                delay(tickIntervalMs)
-                phaseTimeLeftMs -= tickIntervalMs
-                totalTimeLeftMs -= tickIntervalMs
-                onUpdate(phaseTimeLeftMs, if (currentPhaseIsExercise) "Exercise" else "Rest", totalTimeLeftMs)
-            }
-            if (totalTimeLeftMs <= 0) break
-            if (currentPhaseIsExercise) {
-                currentPhaseIsExercise = false
-                phaseTimeLeftMs = restDurationMs
-                if (phaseTimeLeftMs > 0) playSoundAction(AppSoundIds.EXERCISE_REST_SOUND_ID)
-            } else {
-                currentPhaseIsExercise = true
-                phaseTimeLeftMs = exerciseDurationMs
-                playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
-            }
-        }
+    // Determine the starting phase based on resume status or initial conditions
+    var currentPhase = when {
+        isResuming && initialStatus == "Delay" -> "Delay"
+        isResuming && initialStatus == "Exercise" -> "Exercise"
+        isResuming && initialStatus == "Rest" -> "Rest"
+        delayDurationMs > 0 -> "Delay"
+        else -> "Exercise"
     }
-    onComplete("Workout Complete")
-    workoutCompleted.value = true
-    playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+
+    // Play the start sound only when a brand new workout begins.
+    if (!isResuming) {
+        playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
+    }
+
+    val startTime = System.currentTimeMillis()
+    var lastTickTime = startTime
+
+    while (true) {
+        val currentTime = System.currentTimeMillis()
+        val deltaTime = currentTime - lastTickTime
+        lastTickTime = currentTime
+        timeLeftInPhaseMs -= deltaTime
+
+        // Update total time only in exercise and rest phases
+        if (currentPhase == "Exercise" || currentPhase == "Rest") {
+            totalTimeElapsedMs += deltaTime
+        }
+
+        // Determine secondary value based on mode
+        val secondaryValue = if (isSetsMode) {
+            setsRemaining.toDouble()
+        } else {
+            targetTotalWorkoutTimeMs - totalTimeElapsedMs
+        }
+
+        onUpdate(timeLeftInPhaseMs, currentPhase, secondaryValue)
+
+        if (timeLeftInPhaseMs <= 0) {
+            when (currentPhase) {
+                "Delay" -> {
+                    // After delay, move to exercise
+                    currentPhase = "Exercise"
+                    timeLeftInPhaseMs = exerciseDurationMs
+                }
+                "Exercise" -> {
+                    if (!isSetsMode && totalTimeElapsedMs >= targetTotalWorkoutTimeMs) {
+                        workoutCompleted.value = true
+                        onComplete("Workout Complete!")
+                        playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+                        return
+                    }
+                    // After exercise, move to rest
+                    currentPhase = "Rest"
+                    timeLeftInPhaseMs = restDurationMs
+                    playSoundAction(AppSoundIds.EXERCISE_REST_SOUND_ID)
+                }
+                "Rest" -> {
+                    setsRemaining--
+                    if (isSetsMode && setsRemaining <= 0) {
+                        workoutCompleted.value = true
+                        onComplete("Workout Complete!")
+                        playSoundAction(AppSoundIds.EXERCISE_COMPLETE_SOUND_ID)
+                        return
+                    }
+
+                    // Play start sound for the next set/rep
+                    playSoundAction(AppSoundIds.EXERCISE_START_SOUND_ID)
+
+                    // After rest, move to delay if it exists, otherwise to exercise
+                    if (delayDurationMs > 0) {
+                        currentPhase = "Delay"
+                        timeLeftInPhaseMs = delayDurationMs
+                    } else {
+                        currentPhase = "Exercise"
+                        timeLeftInPhaseMs = exerciseDurationMs
+                    }
+                }
+            }
+        }
+        delay(16) // Roughly 60 FPS updates
+    }
 }
 
 // --- MAIN UI COMPOSABLE ---
@@ -372,16 +407,19 @@ fun PTTimerScreen(viewModel: TimerViewModel, _onNavigateToSetup: () -> Unit) {
     var restTime by remember { mutableDoubleStateOf(0.0) }
     var sets by remember { mutableDoubleStateOf(0.0) }
     var totalTime by remember { mutableDoubleStateOf(0.0) }
+    var delayTime by remember { mutableDoubleStateOf(0.0) }
 
-    var exerciseTextFieldValue by remember { mutableStateOf(TextFieldValue()) }
-    var restTextFieldValue by remember { mutableStateOf(TextFieldValue()) }
-    var setsTextFieldValue by remember { mutableStateOf(TextFieldValue()) }
-    var totalTimeTextFieldValue by remember { mutableStateOf(TextFieldValue()) }
+    var exerciseTextFieldValue by remember { mutableStateOf(TextFieldValue("0")) }
+    var restTextFieldValue by remember { mutableStateOf(TextFieldValue("0")) }
+    var setsTextFieldValue by remember { mutableStateOf(TextFieldValue("0")) }
+    var totalTimeTextFieldValue by remember { mutableStateOf(TextFieldValue("0")) }
+    var delayTextFieldValue by remember { mutableStateOf(TextFieldValue("0")) }
 
     var exerciseError by remember { mutableStateOf<String?>(null) }
     var restError by remember { mutableStateOf<String?>(null) }
     var setsError by remember { mutableStateOf<String?>(null) }
     var totalTimeError by remember { mutableStateOf<String?>(null) }
+    var delayError by remember { mutableStateOf<String?>(null) }
 
     var selectedSetup by remember { mutableStateOf<String?>(null) }
     var newSetupName by remember { mutableStateOf(TextFieldValue("")) }
@@ -455,24 +493,33 @@ fun PTTimerScreen(viewModel: TimerViewModel, _onNavigateToSetup: () -> Unit) {
             val isResumingFromPause = isPaused
             timerJob = coroutineScope.launch {
                 isRunning = true
+                // Determine starting time based on delay
+                val hasDelay = delayTime > 0
                 if (!isResumingFromPause) {
-                    timeLeftInCurrentPhaseMs = exerciseTime * 1000
+                    // If not resuming, start with delay time if available, otherwise exercise time
+                    timeLeftInCurrentPhaseMs = if (hasDelay) delayTime * 1000 else exerciseTime * 1000
                     secondaryDisplayValue = if (useSetsMode) sets else totalTime * 1000
                 }
-                val initialTime = if (isResumingFromPause) pausedTimeLeftInCurrentPhaseMs else exerciseTime * 1000
-                val initialIsExercise = true
+
+                val initialTime = if (isResumingFromPause) pausedTimeLeftInCurrentPhaseMs else timeLeftInCurrentPhaseMs
+                // If there's a delay, we start in the "delay" phase, which is not the "exercise" phase.
+                val initialIsExercise = if (isResumingFromPause) status == "Exercise" else !hasDelay
                 val initialSets = if (isResumingFromPause) pausedCurrentSetsRemaining.toInt() else sets.toInt()
 
+                // Find the timerCoroutine function definition and add the new parameter to it.
                 timerCoroutine(
                     isSetsMode = useSetsMode,
+                    delayDurationMs = delayTime * 1000, // <-- PASS THE DELAY
                     exerciseDurationMs = exerciseTime * 1000,
                     restDurationMs = restTime * 1000,
                     targetTotalWorkoutTimeMs = totalTime * 1000,
                     workoutCompleted = workoutCompleted,
                     isResuming = isResumingFromPause,
                     initialTimeLeftInPhaseMs = initialTime,
-                    initialIsExercisePhase = initialIsExercise,
+                    // The initial phase is now more complex, we'll handle it inside the coroutine
                     initialSetsRemaining = initialSets,
+                    // The status will also be needed to properly resume
+                    initialStatus = if (isResumingFromPause) status else "Ready",
                     playSoundAction = { soundId -> playSound(soundPool, activeStreamIds, soundId) },
                     onUpdate = { timeLeftInPhase, statusText, secondaryVal ->
                         timeLeftInCurrentPhaseMs = timeLeftInPhase
@@ -490,6 +537,7 @@ fun PTTimerScreen(viewModel: TimerViewModel, _onNavigateToSetup: () -> Unit) {
             isPaused = false
         }
     }
+
 
     val onStopClick = {
         timerJob?.cancel()
@@ -528,30 +576,101 @@ fun PTTimerScreen(viewModel: TimerViewModel, _onNavigateToSetup: () -> Unit) {
         }
 
         item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                TimerInputColumn(label = "Exercise Time", value = exerciseTextFieldValue, onValueChange = {
-                    exerciseTextFieldValue = it
-                    validateAndSave(it.text, false, { e -> exerciseError = e }) { v -> exerciseTime = v }
-                }, isError = exerciseError != null, errorMessage = exerciseError, modifier = Modifier.weight(1f))
-                Spacer(modifier = Modifier.width(8.dp))
-                TimerInputColumn(label = "Rest Time", value = restTextFieldValue, onValueChange = {
-                    restTextFieldValue = it
-                    validateAndSave(it.text, true, { e -> restError = e }) { v -> restTime = v }
-                }, isError = restError != null, errorMessage = restError, modifier = Modifier.weight(1f))
+            // --- FIRST ROW OF INPUTS: Delay, Exercise, Rest ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Delay Time Input
+                TimerInputColumn(
+                    label = "Delay",
+                    value = delayTextFieldValue,
+                    onValueChange = {
+                        delayTextFieldValue = it
+                        validateAndSave(it.text, true, { e -> delayError = e }) { v -> delayTime = v }
+                    },
+                    isError = delayError != null,
+                    errorMessage = delayError,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Exercise Time Input
+                TimerInputColumn(
+                    label = "Exercise",
+                    value = exerciseTextFieldValue,
+                    onValueChange = {
+                        exerciseTextFieldValue = it
+                        validateAndSave(it.text, false, { e -> exerciseError = e }) { v -> exerciseTime = v }
+                    },
+                    isError = exerciseError != null,
+                    errorMessage = exerciseError,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Rest Time Input
+                TimerInputColumn(
+                    label = "Rest",
+                    value = restTextFieldValue,
+                    onValueChange = {
+                        restTextFieldValue = it
+                        validateAndSave(it.text, true, { e -> restError = e }) { v -> restTime = v }
+                    },
+                    isError = restError != null,
+                    errorMessage = restError,
+                    modifier = Modifier.weight(1f)
+                )
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                TimerInputColumn(label = "Sets", value = setsTextFieldValue, onValueChange = {
-                    setsTextFieldValue = it
-                    validateAndSave(it.text, true, { e -> setsError = e }) { v -> sets = v }
-                }, isError = setsError != null, errorMessage = setsError, keyboardType = KeyboardType.Number, modifier = Modifier.weight(1f))
-                Spacer(modifier = Modifier.width(8.dp))
-                TimerInputColumn(label = "Total Time", value = totalTimeTextFieldValue, onValueChange = {
-                    totalTimeTextFieldValue = it
-                    validateAndSave(it.text, true, { e -> totalTimeError = e }) { v -> totalTime = v }
-                }, isError = totalTimeError != null, errorMessage = totalTimeError, modifier = Modifier.weight(1f))
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // --- SECOND ROW OF INPUTS: Sets, Total Time ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Sets Input
+                TimerInputColumn(
+                    label = "Sets",
+                    value = setsTextFieldValue,
+                    onValueChange = {
+                        setsTextFieldValue = it
+                        validateAndSave(it.text, true, { e -> setsError = e }) { v -> sets = v }
+                        // When sets are edited, clear total time
+                        if (it.text.isNotEmpty()) {
+                            totalTime = 0.0
+                            totalTimeTextFieldValue = TextFieldValue()
+                        }
+                    },
+                    isError = setsError != null,
+                    errorMessage = setsError,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Total Time Input
+                TimerInputColumn(
+                    label = "Total Time",
+                    value = totalTimeTextFieldValue,
+                    onValueChange = {
+                        totalTimeTextFieldValue = it
+                        validateAndSave(it.text, true, { e -> totalTimeError = e }) { v -> totalTime = v }
+                        // When total time is edited, clear sets
+                        if (it.text.isNotEmpty()) {
+                            sets = 0.0
+                            setsTextFieldValue = TextFieldValue()
+                        }
+                    },
+                    isError = totalTimeError != null,
+                    errorMessage = totalTimeError,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // This Spacer acts as a placeholder to fill the third column
+                Spacer(modifier = Modifier.weight(1f))
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp)) // This spacer was already there
         }
+
+// ... continue with the next item { } block for the buttons ...
 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -569,7 +688,35 @@ fun PTTimerScreen(viewModel: TimerViewModel, _onNavigateToSetup: () -> Unit) {
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                 OutlinedTextField(
                     value = selectedSetup ?: "Select a Setup",
-                    onValueChange = {},
+                    onValueChange = {
+                        // Inside the onValueChange of the ExposedDropdownMenuBox
+                        val setup = loadedSetups.find { it.name == newSetupName.text }
+                        if (setup != null) {
+                            selectedSetup = setup.name
+
+                            // Update state variables from the selected setup
+                            delayTime = setup.config.delayTime
+                            exerciseTime = setup.config.exerciseTime
+                            restTime = setup.config.restTime
+                            sets = setup.config.sets
+                            totalTime = setup.config.totalTime
+
+                            // Update TextField values to reflect the change
+                            delayTextFieldValue = TextFieldValue(formatForTextField(delayTime))
+                            exerciseTextFieldValue = TextFieldValue(formatForTextField(exerciseTime))
+                            restTextFieldValue = TextFieldValue(formatForTextField(restTime))
+                            setsTextFieldValue = TextFieldValue(formatForTextField(sets, isInteger = true))
+                            totalTimeTextFieldValue = TextFieldValue(formatForTextField(totalTime))
+
+                            // Clear any previous errors
+                            delayError = null // <-- ADD THIS
+                            exerciseError = null
+                            restError = null
+                            setsError = null
+                            totalTimeError = null
+                        }
+
+                    },
                     readOnly = true,
                     label = { Text("Setups") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
