@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- This is the theme that will be applied to the app before Compose takes over. -->
+    <!-- Its parent, Theme.Material3.DayNight.NoActionBar, is the key part. -->
+    <style name="Theme.PT_Timer" parent="Theme.Material3.DayNight.NoActionBar" />
+</resources>
