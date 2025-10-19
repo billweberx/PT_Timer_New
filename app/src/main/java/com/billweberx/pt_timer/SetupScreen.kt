@@ -1,6 +1,7 @@
+// In file: app/src/main/java/com/billweberx/pt_timer/SetupScreen.kt
+
 package com.billweberx.pt_timer
 
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -8,15 +9,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import java.io.BufferedReader
-import java.io.InputStreamReader
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,112 +24,144 @@ fun SetupScreen(
     onImport: (String) -> Unit,
     onExport: () -> String
 ) {
-    var selectedStartSound by viewModel::selectedStartSound
-    var selectedRestSound by viewModel::selectedRestSound
-    var selectedCompleteSound by viewModel::selectedCompleteSound
-    val context = LocalContext.current
-
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-        onResult = { uri: Uri? ->
-            uri?.let {
-                try {
-                    val contentResolver = context.contentResolver
-                    contentResolver.openInputStream(it)?.use { inputStream ->
-                        BufferedReader(InputStreamReader(inputStream)).use { reader ->
-                            val content = reader.readText()
-                            onImport(content)
-                        }
-                    }
-                } catch (_: Exception) { /* Handle exception */ }
-            }
-        }
-    )
+    // --- THIS IS THE FIX ---
+    // The local state variables are removed.
+    // The UI will now directly read the state from the viewModel,
+    // ensuring it's always up-to-date.
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
-        onResult = { uri: Uri? ->
+        onResult = { uri ->
             uri?.let {
-                try {
-                    val contentResolver = context.contentResolver
-                    contentResolver.openOutputStream(it)?.use { outputStream ->
-                        val jsonString = onExport()
-                        outputStream.write(jsonString.toByteArray())
-                    }
-                } catch (_: Exception) { /* Handle exception */ }
+                val json = onExport()
+                navController.context.contentResolver.openOutputStream(it)?.use { stream ->
+                    stream.write(json.toByteArray())
+                }
             }
         }
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp), // Main padding for left/right
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Custom Top Bar Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding() // <-- THIS IS THE KEY FIX
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { navController.popBackStack() }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri ->
+            uri?.let {
+                navController.context.contentResolver.openInputStream(it)?.use { stream ->
+                    val json = stream.reader().readText()
+                    onImport(json)
+                }
             }
-            Text(
-                "Settings",
-                modifier = Modifier.weight(1f),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.headlineMedium
-            )
-            // Spacer to balance the IconButton and keep the title centered
-            Spacer(modifier = Modifier.width(48.dp))
         }
+    )
 
-        Spacer(modifier = Modifier.height(24.dp)) // Space below the top bar
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Settings & Setups") },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .padding(paddingValues)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Default Sounds", style = MaterialTheme.typography.titleMedium)
 
-        Text("Select Sound Files", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(8.dp))
+            // Corrected: The dropdowns now read directly from the ViewModel's state.
+            SoundDropdown(
+                label = "Start Sound",
+                soundOptions = viewModel.soundOptions,
+                selectedSound = viewModel.selectedStartSound,
+                onSoundSelected = {
+                    viewModel.selectedStartSound = it
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        SoundDropdown(
-            label = "Start Sound",
-            soundOptions = viewModel.startSoundOptions,
-            selectedSound = selectedStartSound,
-            onSoundSelected = {viewModel.selectedStartSound = it
-                viewModel.saveState()
-            },
+            SoundDropdown(
+                label = "Rest Sound",
+                soundOptions = viewModel.soundOptions,
+                selectedSound = viewModel.selectedRestSound,
+                onSoundSelected = {
+                    viewModel.selectedRestSound = it
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-            modifier = Modifier.fillMaxWidth()
+            SoundDropdown(
+                label = "Complete Sound",
+                soundOptions = viewModel.soundOptions,
+                selectedSound = viewModel.selectedCompleteSound,
+                onSoundSelected = {
+                    viewModel.selectedCompleteSound = it
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("Manage Setups", style = MaterialTheme.typography.titleMedium)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Button(onClick = { importLauncher.launch("application/json") }) {
+                    Text("Import")
+                }
+                Button(onClick = { exportLauncher.launch("PT_Timer_Setups.json") }) {
+                    Text("Export")
+                }
+            }
+        }
+    }
+}
+
+// The SoundDropdown composable remains unchanged
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SoundDropdown(
+    label: String,
+    soundOptions: List<SoundOption>,
+    selectedSound: SoundOption,
+    onSoundSelected: (SoundOption) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = selectedSound.displayName,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth()
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        SoundDropdown(
-            label = "Rest Sound",
-            soundOptions = viewModel.restSoundOptions,
-            selectedSound = selectedRestSound,
-            onSoundSelected = {viewModel.selectedRestSound = it
-                viewModel.saveState()
-            },
-
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        SoundDropdown(
-            label = "End Sound",
-            soundOptions = viewModel.completeSoundOptions,
-            selectedSound = selectedCompleteSound,
-            onSoundSelected = {viewModel.selectedCompleteSound = it
-                viewModel.saveState()
-            },
-
-            modifier = Modifier.fillMaxWidth()
-        )
-
-
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Button(onClick = { importLauncher.launch(arrayOf("application/json")) }) { Text("Import Setups") }
-            Button(onClick = { exportLauncher.launch("pt_timer_setups.json") }) { Text("Export Setups") }
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            soundOptions.forEach { sound ->
+                DropdownMenuItem(
+                    text = { Text(sound.displayName) },
+                    onClick = {
+                        onSoundSelected(sound)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }
