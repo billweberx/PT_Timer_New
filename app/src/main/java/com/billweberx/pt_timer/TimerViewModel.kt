@@ -233,14 +233,19 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 if (!coroutineContext.isActive) return
 
                 // 1. Exercise Phase
-                val exerciseDuration = exerciseSec + delaySec
 
+                // *** THE FIX IS HERE ***
                 // When resuming, the first "set" might be a partial one.
-                val currentExerciseDuration = if (startFromPaused && currentSet == setCounterStart && timerScreenState.value.status != "Rest") {
-                    exerciseSec // This holds the remaining time when paused.
+                val isResumingExercise = startFromPaused && currentSet == setCounterStart && timerScreenState.value.status != "Rest"
+
+                val currentExerciseDuration = if (isResumingExercise) {
+                    // On resume, the timer loop uses only the remaining time. The 'delaySec' is ignored for this partial set.
+                    exerciseSec
                 } else {
-                    exerciseDuration
+                    // For all normal sets, calculate the full duration including delay.
+                    (this.exerciseTime.toFloatOrNull()?.toInt() ?: 0) + (this.delayTime.toFloatOrNull()?.toInt() ?: 0)
                 }
+
 
                 if (currentExerciseDuration > 0) {
                     _timerScreenState.update { it.copy(
@@ -248,8 +253,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                         setsRemaining = currentSet, // This is now a countdown value.
                         progressDisplay = "Remaining Sets: $currentSet"
                     ) }
-                    onPlaySound(selectedStartSound.resourceId)
-                    delay(200)
+                    // Only play the start sound for a full, new set, not a resumed one.
+                    if (!isResumingExercise) {
+                        onPlaySound(selectedStartSound.resourceId)
+                        delay(200)
+                    }
 
                     for (t in currentExerciseDuration downTo 1) {
                         if (!coroutineContext.isActive) return
@@ -262,8 +270,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 if (currentSet > 1 && restSec > 0) {
                     if (!coroutineContext.isActive) return
 
+                    val isResumingRest = startFromPaused && currentSet == setCounterStart && timerScreenState.value.status == "Rest"
+
                     // Check if resuming from a paused rest phase.
-                    val currentRestDuration = if (startFromPaused && currentSet == setCounterStart && timerScreenState.value.status == "Rest") {
+                    val currentRestDuration = if (isResumingRest) {
                         exerciseSec // 'exerciseSec' holds the remaining time when paused.
                     } else {
                         restSec
@@ -275,8 +285,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                         // Show sets remaining *after* this rest is complete.
                         progressDisplay = "Remaining Sets: ${currentSet - 1}"
                     ) }
-                    onPlaySound(selectedRestSound.resourceId)
-                    delay(200)
+                    // Only play sound for a new rest, not a resumed one.
+                    if (!isResumingRest) {
+                        onPlaySound(selectedRestSound.resourceId)
+                        delay(200)
+                    }
 
                     for (t in currentRestDuration downTo 1) {
                         if (!coroutineContext.isActive) return
@@ -286,7 +299,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-        } else if (totalTimeSec > 0) {
+        } else if (totalTimeSec > 0) { // Keep the existing, correct "Total Time" logic
+            // ... The code for this block remains unchanged ...
+
             // --- TOTAL TIME MODE --- (Only runs if sets is 0)
             val exerciseDuration = exerciseSec + delaySec
 

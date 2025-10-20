@@ -56,12 +56,15 @@ fun PTTimerScreen(
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     fun playSound(resourceId: Int) {
         if (resourceId != -1) {
-            try {
-                MediaPlayer.create(context, resourceId)?.apply {
-                    setOnCompletionListener { it.release() }
-                    start()
+            // Launch the sound playback in a separate, non-blocking coroutine
+            coroutineScope.launch {
+                try {
+                    MediaPlayer.create(context, resourceId)?.apply {
+                        setOnCompletionListener { it.release() }
+                        start()
+                    }
+                } catch (_: Exception) { /* Handle error */
                 }
-            } catch (_: Exception) { /* Handle error */
             }
         }
     }

@@ -56,7 +56,7 @@ fun SetupScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings & Setups") },
+                title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
