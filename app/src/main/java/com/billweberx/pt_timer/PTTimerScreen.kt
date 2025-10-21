@@ -80,16 +80,22 @@ fun PTTimerScreen(
             try {
                 viewModel.runTimer(playSound)
             } finally {
-                timerJob = null // Ensures UI is re-enabled on completion/cancellation
+                // This block runs on completion, error, or cancellation
+                viewModel.stopTimer() // Reset the state to "Ready"
+                timerJob = null     // Clear the job reference
             }
         }
     }
+// Determine if the timer has valid parameters to start
+    val hasReps = (viewModel.reps.toDoubleOrNull()?.toInt() ?: 0) > 0
+    val hasSets = (viewModel.sets.toDoubleOrNull()?.toInt() ?: 0) > 0
+    val hasTotalTime = (viewModel.totalTime.toDoubleOrNull()?.toInt() ?: 0) > 0
 
-    // Determine if the start button should be enabled
-    val isStartEnabled = !isRunning && (
-            (viewModel.reps.toIntOrNull() ?: 0) > 0 ||
-                    (viewModel.totalTime.toIntOrNull() ?: 0) > 0
-            )
+    val isRepsModeValid = hasReps && hasSets
+    val isTimeModeValid = hasTotalTime
+
+    val isReadyToStart = timerState.status == "Ready"
+    val isStartEnabled = isReadyToStart && (isRepsModeValid || isTimeModeValid)
 
     Column(
         modifier = Modifier

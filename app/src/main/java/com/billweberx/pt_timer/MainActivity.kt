@@ -42,6 +42,7 @@ data class TimerScreenState(
     val progressDisplay: String = "",
     val currentSet: Int = 0,
     val currentRep: Int = 0,
+    val totalTimeRemaining: Int = 0
 )
 
 class MainActivity : ComponentActivity() {

@@ -238,16 +238,19 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val startFromPaused = isPaused
 
         // --- Step 1: Get all values from the UI state ---
-        // These are the full durations for each phase
-        val moveToSec = (if (startFromPaused) 0 else this.moveToTime.toIntOrNull()) ?: 0
-        val exerciseSec = this.exerciseTime.toIntOrNull() ?: 0
-        val moveFromSec = (if (startFromPaused) 0 else this.moveFromTime.toIntOrNull()) ?: 0
-        val restSec = this.restTime.toIntOrNull() ?: 0
-        val setRestSec = this.setRestTime.toIntOrNull() ?: 0
-
-        val totalReps = this.reps.toIntOrNull() ?: 0
-        val totalSets = (this.sets.toIntOrNull() ?: 1).coerceAtLeast(1) // Treat 0 or less as 1
-        val totalTimeSec = this.totalTime.toIntOrNull() ?: 0
+// --- Step 1: Get all values from the UI state ---
+// These are the full durations for each phase
+        val moveToSec =
+            (if (startFromPaused) 0.0 else this.moveToTime.toDoubleOrNull())?.toInt() ?: 0
+        val exerciseSec = this.exerciseTime.toDoubleOrNull()?.toInt() ?: 0
+        val moveFromSec =
+            (if (startFromPaused) 0.0 else this.moveFromTime.toDoubleOrNull())?.toInt() ?: 0
+        val restSec = this.restTime.toDoubleOrNull()?.toInt() ?: 0
+        val setRestSec = this.setRestTime.toDoubleOrNull()?.toInt() ?: 0
+        val totalReps = this.reps.toDoubleOrNull()?.toInt() ?: 0
+        val totalSets =
+            (this.sets.toDoubleOrNull()?.toInt() ?: 1).coerceAtLeast(1) // Treat 0 or less as 1
+        val totalTimeSec = this.totalTime.toDoubleOrNull()?.toInt() ?: 0
 
         // --- Step 2: Determine starting point (fresh or paused) ---
         val startSet: Int
@@ -283,14 +286,16 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     // --- A. EXERCISE PHASE ---
                     val isResumingExercise =
                         isResuming && currentRep == startRep && timerScreenState.value.status == "Exercise!"
+                    val initialMoveTo =
+                        if (currentSet == 1 && currentRep == 1 && !startFromPaused) moveToSec else 0
                     val exerciseDuration =
-                        if (isResumingExercise) initialPhaseTime else moveToSec + exerciseSec
+                        if (isResumingExercise) initialPhaseTime else initialMoveTo + exerciseSec
 
                     if (exerciseDuration > 0) {
                         _timerScreenState.update {
                             it.copy(
                                 status = "Exercise!",
-                                currentSet = currentSet,
+                                currentSet = (totalSets - currentSet) + 1,
                                 currentRep = currentRep,
                                 progressDisplay = "Reps remaining: ${(totalReps - currentRep) + 1}"
                             )
@@ -315,7 +320,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                             _timerScreenState.update {
                                 it.copy(
                                     status = "Rest",
-                                    currentSet = currentSet,
+                                    currentSet = (totalSets - currentSet) + 1,
                                     currentRep = currentRep
                                 )
                             }
@@ -340,7 +345,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                         _timerScreenState.update {
                             it.copy(
                                 status = "Set Rest",
-                                currentSet = currentSet,
+                                currentSet = (totalSets - currentSet) + 1,
                                 currentRep = totalReps
                             )
                         }
@@ -356,71 +361,89 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         } else if (totalTimeSec > 0) {
-            // --- TOTAL TIME MODE --- (Logic is complex and may need refinement, but here is a direct translation)
-            // This mode also loops through sets.
+            // --- TOTAL TIME MODE (Work-for-Time model) ---
+            // Loop through each set.
             for (currentSet in startSet..totalSets) {
                 if (!coroutineContext.isActive) return
 
-                val isResuming = startFromPaused && currentSet == startSet
+                // Total time for this set, resets every set.
+                var remainingTimeInSet = totalTimeSec
 
-                var timeInThisSet =
-                    if (isResuming) initialPhaseTime else totalTimeSec / (totalSets - currentSet + 1)
+                // This loop will run indefinitely, cycling through exercise and rest.
+                // It's broken only when remainingTimeInSet reaches 0.
+                var repCounter = 1 // A simple counter for the exercise/rest cycles
+                while (true) { // Loop indefinitely until broken from within
+                    if (!coroutineContext.isActive) return
 
-                while (coroutineContext.isActive && timeInThisSet > 0) {
-                    // Exercise Phase
-                    val exerciseDuration = moveToSec + exerciseSec
+
+                    // --- A. EXERCISE PHASE ---
+                    val initialMoveTo = if (currentSet == 1 && repCounter == 1 && !startFromPaused) moveToSec else 0
+                    val exerciseDuration = initialMoveTo + exerciseSec
+
                     if (exerciseDuration > 0) {
                         _timerScreenState.update {
                             it.copy(
                                 status = "Exercise!",
-                                currentSet = currentSet,
-                                progressDisplay = "Remaining Time: $timeInThisSet sec"
+                                currentSet = (totalSets - currentSet) + 1,
+                                progressDisplay = "Total Time: ${remainingTimeInSet}s"
                             )
                         }
                         onPlaySound(selectedStartRepSound.resourceId)
+
+                        // Countdown for the exercise duration.
                         for (t in exerciseDuration downTo 1) {
-                            if (!coroutineContext.isActive || timeInThisSet <= 0) break
+                            if (!coroutineContext.isActive || remainingTimeInSet <= 0) break
                             _timerScreenState.update {
                                 it.copy(
                                     remainingTime = t,
-                                    progressDisplay = "Remaining Time: $timeInThisSet sec"
+                                    totalTimeRemaining = remainingTimeInSet,
+                                    progressDisplay = "Total Time: ${remainingTimeInSet}s"
                                 )
                             }
                             delay(1000)
-                            timeInThisSet--
+                            remainingTimeInSet--
                         }
                     }
+                    if (remainingTimeInSet <= 0) break // Exit if total time for set is up
 
-                    // Rest Phase
-                    val restDuration = moveFromSec + restSec
-                    if (restDuration > 0 && timeInThisSet > 0) {
+                    // --- B. REST PHASE ---
+                    val restDuration = restSec + moveFromSec
+                    if (restDuration > 0) {
                         _timerScreenState.update {
                             it.copy(
                                 status = "Rest",
-                                progressDisplay = "Remaining Time: $timeInThisSet sec"
+                                currentSet = (totalSets - currentSet) + 1,
+                                progressDisplay = "Total Time: ${remainingTimeInSet}s"
                             )
                         }
                         onPlaySound(selectedStartRestSound.resourceId)
+
+                        // Countdown for the rest duration.
                         for (t in restDuration downTo 1) {
-                            if (!coroutineContext.isActive || timeInThisSet <= 0) break
+                            if (!coroutineContext.isActive || remainingTimeInSet <= 0) break
                             _timerScreenState.update {
                                 it.copy(
                                     remainingTime = t,
-                                    progressDisplay = "Remaining Time: $timeInThisSet sec"
+                                    totalTimeRemaining = remainingTimeInSet,
+                                    progressDisplay = "Total Time: ${remainingTimeInSet}s"
                                 )
                             }
                             delay(1000)
-                            timeInThisSet--
+                            remainingTimeInSet--
                         }
                     }
+                    repCounter++ // Increment for the next exercise/rest cycle
+                    if (remainingTimeInSet <= 0) break // Exit if total time for set is up
                 }
 
-                // Set Rest Phase
+                // --- C. SET REST PHASE ---
+                // This starts only after the while loop is broken (total time for the set is up).
                 if (currentSet < totalSets && setRestSec > 0) {
                     _timerScreenState.update {
                         it.copy(
                             status = "Set Rest",
-                            currentSet = currentSet
+                            currentSet = (totalSets - currentSet) + 1,
+                            progressDisplay = "Set Rest"
                         )
                     }
                     onPlaySound(selectedStartSetRestSound.resourceId)
@@ -432,6 +455,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+
+
+
+
 
         // --- Step 4: Timer Finished ---
         if (coroutineContext.isActive) {
