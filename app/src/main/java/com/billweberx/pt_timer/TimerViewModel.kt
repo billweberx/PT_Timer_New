@@ -286,10 +286,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     // --- A. EXERCISE PHASE ---
                     val isResumingExercise =
                         isResuming && currentRep == startRep && timerScreenState.value.status == "Exercise!"
-                    val initialMoveTo =
-                        if (currentSet == 1 && currentRep == 1 && !startFromPaused) moveToSec else 0
                     val exerciseDuration =
-                        if (isResumingExercise) initialPhaseTime else initialMoveTo + exerciseSec
+                        if (isResumingExercise) initialPhaseTime else moveToSec + exerciseSec
 
                     if (exerciseDuration > 0) {
                         _timerScreenState.update {
@@ -375,10 +373,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 while (true) { // Loop indefinitely until broken from within
                     if (!coroutineContext.isActive) return
 
-
                     // --- A. EXERCISE PHASE ---
-                    val initialMoveTo = if (currentSet == 1 && repCounter == 1 && !startFromPaused) moveToSec else 0
-                    val exerciseDuration = initialMoveTo + exerciseSec
+                    val isResumingExercise =
+                    startFromPaused && currentSet == startSet && repCounter == 1 && timerScreenState.value.status == "Exercise!"
+                    val exerciseDuration =
+                        if (isResumingExercise) initialPhaseTime else moveToSec + exerciseSec
 
                     if (exerciseDuration > 0) {
                         _timerScreenState.update {
