@@ -1,1 +1,3 @@
 /build
+# Kotlin compiler temporary files
+.kotlin/

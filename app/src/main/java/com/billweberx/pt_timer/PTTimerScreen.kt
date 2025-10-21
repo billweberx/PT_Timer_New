@@ -1,48 +1,57 @@
-// In file: app/src/main/java/com/billweberx/pt_timer/PTTimerScreen.kt
-
-package com.billweberx.pt_timer
+package com.billweberx.pt_timer // Make sure this line is at the very top
 
 import android.media.MediaPlayer
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-// Data class for the main timer screen's reactive state
-data class TimerScreenState(
-    val status: String = "Ready",
-    val remainingTime: Int = 0,
-    val setsRemaining: Int = 0,
-    val progressDisplay: String = ""
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PTTimerScreen(
     viewModel: TimerViewModel,
-    onGoToSettings: () -> Unit,
-    onSaveSetup: (TimerSetup) -> Unit,
-    onDeleteSetup: (String) -> Unit
+    onGoToSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -52,11 +61,8 @@ fun PTTimerScreen(
     var timerJob by remember { mutableStateOf<Job?>(null) }
     val isRunning by remember { derivedStateOf { timerJob?.isActive == true } }
 
-    var newSetupName by remember { mutableStateOf("") }
-    var showClearConfirmDialog by remember { mutableStateOf(false) }
-    fun playSound(resourceId: Int) {
+    val playSound: (Int) -> Unit = { resourceId ->
         if (resourceId != -1) {
-            // Launch the sound playback in a separate, non-blocking coroutine
             coroutineScope.launch {
                 try {
                     MediaPlayer.create(context, resourceId)?.apply {
@@ -69,16 +75,21 @@ fun PTTimerScreen(
         }
     }
 
-    fun timerCoroutine(): Job = coroutineScope.launch {
-        try {
-            viewModel.runTimer { soundId -> playSound(soundId) }
-        } finally {
-            // This 'finally' block ensures that no matter how the coroutine
-            // finishes (completes normally or is cancelled), we nullify the job.
-            // This is the key to re-enabling the UI.
-            timerJob = null
+    val timerCoroutine: () -> Job = {
+        coroutineScope.launch {
+            try {
+                viewModel.runTimer(playSound)
+            } finally {
+                timerJob = null // Ensures UI is re-enabled on completion/cancellation
+            }
         }
     }
+
+    // Determine if the start button should be enabled
+    val isStartEnabled = !isRunning && (
+            (viewModel.reps.toIntOrNull() ?: 0) > 0 ||
+                    (viewModel.totalTime.toIntOrNull() ?: 0) > 0
+            )
 
     Column(
         modifier = Modifier
@@ -86,7 +97,7 @@ fun PTTimerScreen(
             .padding(horizontal = 16.dp, vertical = 32.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
 
         // --- Row 1: App Title and Settings Icon ---
@@ -96,74 +107,46 @@ fun PTTimerScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("PT Timer", style = MaterialTheme.typography.titleLarge)
+            Text("Home", style = MaterialTheme.typography.titleLarge)
             IconButton(onClick = onGoToSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "Settings")
             }
         }
-        // --- Row 2: Progress Display ---
-        if (isRunning && timerState.progressDisplay.isNotBlank()) {
+
+        // --- Row 2: Phase Status ---
+        Text(timerState.status, style = MaterialTheme.typography.headlineMedium)
+
+        // --- Row 3: Set, Rep, and Countdown Timer ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isRunning || viewModel.isPaused) {
+                Text(
+                    text = "Set: ${timerState.currentSet}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Text(
+                text = timerState.remainingTime.toString(),
+                style = MaterialTheme.typography.displayLarge,
+                fontWeight = FontWeight.Bold
+            )
+            // Placeholder to keep the timer centered, you can add Rep count here if desired
+            Spacer(modifier = Modifier.width(40.dp))
+        }
+
+        // --- Row 4: Progress Display ---
+        if (isRunning || viewModel.isPaused) {
             Text(
                 text = timerState.progressDisplay,
-                style = MaterialTheme.typography.bodyMedium, // Slightly smaller than the phase status
+                style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 4.dp)
             )
         }
-        // --- Row 3: Phase Status ---
-        Text(timerState.status, style = MaterialTheme.typography.headlineMedium)
 
-        // --- Row 4: Remaining Time ---
-        Text(timerState.remainingTime.toString(), style = MaterialTheme.typography.displayLarge)
-
-        // --- Row 5: Delay, Exercise, Rest Time ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TimerInputField(
-                "Delay",
-                viewModel.delayTime,
-                { viewModel.delayTime = it },
-                !isRunning,
-                Modifier.weight(1f)
-            )
-            TimerInputField(
-                "Exercise",
-                viewModel.exerciseTime,
-                { viewModel.exerciseTime = it },
-                !isRunning,
-                Modifier.weight(1f)
-            )
-            TimerInputField(
-                "Rest",
-                viewModel.restTime,
-                { viewModel.restTime = it },
-                !isRunning,
-                Modifier.weight(1f)
-            )
-        }
-
-        // --- Row 6: Sets and Total Time ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TimerInputField(
-                "Sets",
-                viewModel.sets,
-                { viewModel.sets = it },
-                !isRunning,
-                Modifier.weight(1f)
-            )
-            TimerInputField(
-                "Total Time",
-                viewModel.totalTime,
-                { viewModel.totalTime = it },
-                !isRunning,
-                Modifier.weight(1f)
-            )
-        }
-
-        // --- Row 7: Start/Pause and Stop Buttons ---
+        // --- Row 5: Start/Pause and Stop Buttons ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
@@ -179,11 +162,10 @@ fun PTTimerScreen(
                         timerJob = timerCoroutine()
                     }
                 },
+                enabled = isStartEnabled || isRunning, // Enabled if ready to start OR already running
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) Color(
-                        0xFFFFF9C4
-                    ) else Color(0xFFC8E6C9)
-                ) // Yellow if running, Green if not
+                    containerColor = if (isRunning) Color(0xFFFFF9C4) else Color(0xFFC8E6C9)
+                )
             ) {
                 if (isRunning) {
                     Icon(Icons.Default.Pause, contentDescription = "Pause")
@@ -194,6 +176,7 @@ fun PTTimerScreen(
                     )
                 }
             }
+
             // Stop Button
             Button(
                 onClick = {
@@ -202,159 +185,87 @@ fun PTTimerScreen(
                     viewModel.stopTimer()
                 },
                 enabled = isRunning || viewModel.isPaused,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCDD2)) // Light Red
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCDD2))
             ) {
                 Icon(Icons.Default.Stop, contentDescription = "Stop")
             }
         }
 
+        // --- Read-only values Section (NEW 3-ROW LAYOUT) ---
+        // First row of read-only fields
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ReadOnlyField(label = "Move To", value = viewModel.moveToTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Exercise", value = viewModel.exerciseTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Move From", value = viewModel.moveFromTime, modifier = Modifier.weight(1f))
+        }
+
+        // Second row of read-only fields
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ReadOnlyField(label = "Rest", value = viewModel.restTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Sets", value = viewModel.sets, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Set Rest", value = viewModel.setRestTime, modifier = Modifier.weight(1f))
+        }
+
+        // Third row of read-only fields
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ReadOnlyField(label = "Reps", value = viewModel.reps, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Total Time", value = viewModel.totalTime, modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(1f)) // Add a spacer to align with the rows above
+        }
+
+
         // --- Row 8: Setups Spinner Box ---
-        var expanded by remember { mutableStateOf(false) }
-        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        ExposedDropdownMenuBox(
+            expanded = false, // This is a placeholder, real state is needed
+            onExpandedChange = { }
+        ) {
             OutlinedTextField(
                 value = viewModel.activeSetup?.name ?: "Select a Setup",
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Setups") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = false) },
                 modifier = Modifier
                     .menuAnchor()
-                    .fillMaxWidth()
+                    .fillMaxWidth(),
+                enabled = !isRunning // Disable while timer is running
             )
-            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            ExposedDropdownMenu(
+                expanded = false,
+                onDismissRequest = { }
+            ) {
                 viewModel.loadedSetups.forEach { setup ->
                     DropdownMenuItem(
                         text = { Text(setup.name) },
                         onClick = {
                             viewModel.applySetup(setup)
-                            newSetupName = setup.name
-                            expanded = false
                         }
                     )
                 }
             }
         }
-
-        // --- Row 9: New Setup Name Text Box ---
-        OutlinedTextField(
-            value = newSetupName,
-            onValueChange = { newSetupName = it },
-            label = { Text("New Setup Name") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-
-        // --- Row 10: Save, Delete, and Clear Buttons ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically // Good practice to align items in a row
-        ) {
-            // "Save Exercise" Button
-            Button(
-                onClick = {
-                    val setupToSave = TimerSetup(
-                        name = newSetupName,
-                        config = SetupConfig(
-                            exerciseTime = viewModel.exerciseTime,
-                            restTime = viewModel.restTime,
-                            sets = viewModel.sets,
-                            totalTime = viewModel.totalTime,
-                            delayTime = viewModel.delayTime
-                        )
-                    )
-                    onSaveSetup(setupToSave)
-                },
-                enabled = newSetupName.isNotBlank()
-            ) {
-                // Use \n for a newline and center the text
-                Text("Save\nExercise", textAlign = TextAlign.Center)
-            }
-
-            // "Delete Exercise" Button
-            Button(
-                onClick = {
-                    viewModel.activeSetup?.name?.let {
-                        onDeleteSetup(it)
-                        newSetupName = "" // Clear name field after deleting
-                    }
-                },
-                enabled = viewModel.activeSetup != null,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCDD2)) // Light Red
-            ) {
-                Text("Delete\nExercise", textAlign = TextAlign.Center)
-            }
-
-            // --- "Clear Setup" BUTTON ---
-            Button(
-                onClick = {
-                    showClearConfirmDialog = true
-                },
-                enabled = viewModel.loadedSetups.isNotEmpty(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCDD2)) // Light Red
-            ) {
-                Text("Clear\nSetup", textAlign = TextAlign.Center)
-            }
-        }
-
-
     }
-
-    // --- ADD THE CONFIRMATION DIALOG LOGIC HERE ---
-    if (showClearConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                // This is called when the user clicks outside the dialog.
-                showClearConfirmDialog = false
-            },
-            title = {
-                Text(text = "Confirm Clear")
-            },
-            text = {
-                Text("Are you sure you want to delete the entire setup?")
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.clearAllSetups()
-                        newSetupName = ""
-                        showClearConfirmDialog = false // Close the dialog
-                    }) {
-                    Text("Yes")
-                }
-            },
-            dismissButton = {
-                Button(
-                    onClick = {
-                        showClearConfirmDialog = false // Close the dialog
-                    }) {
-                    Text("No")
-                }
-            }
-        )
-    }
-
 }
 
-// Helper composable for the input text fields
+// Helper composable for the read-only display fields
 @Composable
-fun TimerInputField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier
-) {
+fun ReadOnlyField(label: String, value: String, modifier: Modifier = Modifier) {
     OutlinedTextField(
         value = value,
-        onValueChange = onValueChange,
+        onValueChange = {},
         label = { Text(label) },
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Number,
-            imeAction = ImeAction.Next
-        ),
-        singleLine = true,
-        enabled = enabled,
-        modifier = modifier
+        readOnly = true,
+        modifier = modifier,
+        textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
+        singleLine = true
     )
 }
