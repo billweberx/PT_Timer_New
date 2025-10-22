@@ -31,10 +31,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,7 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 
@@ -58,8 +55,7 @@ fun PTTimerScreen(
 
     // State from ViewModel
     val timerState by viewModel.timerScreenState.collectAsStateWithLifecycle()
-    var timerJob by remember { mutableStateOf<Job?>(null) }
-    val isRunning by remember { derivedStateOf { timerJob?.isActive == true } }
+
 
     val playSound: (Int) -> Unit = { resourceId ->
         if (resourceId != -1) {
@@ -74,19 +70,7 @@ fun PTTimerScreen(
             }
         }
     }
-
-    val timerCoroutine: () -> Job = {
-        coroutineScope.launch {
-            try {
-                viewModel.runTimer(playSound)
-            } finally {
-                // This block runs on completion, error, or cancellation
-                viewModel.stopTimer() // Reset the state to "Ready"
-                timerJob = null     // Clear the job reference
-            }
-        }
-    }
-// Determine if the timer has valid parameters to start
+    // Determine if the timer has valid parameters to start
     val hasReps = (viewModel.reps.toDoubleOrNull()?.toInt() ?: 0) > 0
     val hasSets = (viewModel.sets.toDoubleOrNull()?.toInt() ?: 0) > 0
     val hasTotalTime = (viewModel.totalTime.toDoubleOrNull()?.toInt() ?: 0) > 0
@@ -96,7 +80,7 @@ fun PTTimerScreen(
 
     val isReadyToStart = timerState.status == "Ready"
     val isStartEnabled = isReadyToStart && (isRepsModeValid || isTimeModeValid)
-
+    val isRunning by remember { derivedStateOf { timerState.status != "Ready" && timerState.status != "Finished" } }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -130,7 +114,17 @@ fun PTTimerScreen(
         ) {
             if (isRunning || viewModel.isPaused) {
                 Text(
-                    text = "Set: ${timerState.currentSet}",
+                    text = if (isRunning || viewModel.isPaused) {
+                        // If timer is active, calculate the countdown
+                        val totalSets = viewModel.sets.toDoubleOrNull()?.toInt() ?: 0
+                        val displaySet = (totalSets - timerState.currentSet + 1).coerceAtLeast(1)
+                        "Set: $displaySet"
+                    } else {
+                        // If timer is stopped, show the total sets from the read-only field
+                        val totalSets = viewModel.sets.toDoubleOrNull()?.toInt() ?: 0
+                        // Only show if the value is valid
+                        if (totalSets > 0) "Set: $totalSets" else ""
+                    },
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -152,7 +146,6 @@ fun PTTimerScreen(
             )
         }
 
-        // --- Row 5: Start/Pause and Stop Buttons ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
@@ -160,20 +153,23 @@ fun PTTimerScreen(
             // Start/Pause Button
             Button(
                 onClick = {
-                    if (isRunning) { // If running, pause it
+                    if (isRunning && !viewModel.isPaused) {
+                        // If it's running and NOT paused, then we should pause it.
                         viewModel.pauseTimer()
-                        timerJob?.cancel()
-                        timerJob = null
-                    } else { // If not running, start it
-                        timerJob = timerCoroutine()
+                    } else {
+                        // Otherwise (if it's not running, or if it IS running but is paused), we should start/resume it.
+                        viewModel.startTimer(playSound)
                     }
                 },
-                enabled = isStartEnabled || isRunning, // Enabled if ready to start OR already running
+
+                enabled = isStartEnabled || isRunning || viewModel.isPaused,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) Color(0xFFFFF9C4) else Color(0xFFC8E6C9)
+                    containerColor = if (isRunning && !viewModel.isPaused) Color(0xFFFFF9C4) else Color(
+                        0xFFC8E6C9
+                    )
                 )
             ) {
-                if (isRunning) {
+                if (isRunning && !viewModel.isPaused) {
                     Icon(Icons.Default.Pause, contentDescription = "Pause")
                 } else {
                     Icon(
@@ -186,9 +182,7 @@ fun PTTimerScreen(
             // Stop Button
             Button(
                 onClick = {
-                    timerJob?.cancel()
-                    timerJob = null
-                    viewModel.stopTimer()
+                    viewModel.stopTimer() // Just call the simple stop function
                 },
                 enabled = isRunning || viewModel.isPaused,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCDD2))
@@ -261,6 +255,11 @@ fun PTTimerScreen(
         }
     }
 }
+
+
+
+
+
 
 // Helper composable for the read-only display fields
 @Composable
