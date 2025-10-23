@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
@@ -262,9 +263,15 @@ fun PTTimerScreen(
             ReadOnlyField(label = "Total Time", value = viewModel.totalTime, modifier = Modifier.weight(1f))
             Spacer(modifier = Modifier.weight(1f))
         }
+        // the Setups dropdown
         ExposedDropdownMenuBox(
             expanded = isSetupDropdownExpanded,
-            onExpandedChange = { isSetupDropdownExpanded = !isSetupDropdownExpanded }
+            onExpandedChange = {
+                // Only allow opening the menu if the timer is not running
+                if (!isRunning) {
+                    isSetupDropdownExpanded = !isSetupDropdownExpanded
+                }
+            }
         ) {
             OutlinedTextField(
                 value = viewModel.activeSetup?.name ?: "Select a Setup",
@@ -272,15 +279,23 @@ fun PTTimerScreen(
                 readOnly = true,
                 label = { Text("Setups") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isSetupDropdownExpanded) },
+                // --- THE FIX IS HERE ---
                 modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth(),
-                enabled = !isRunning
+                    .menuAnchor(
+                        type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                        // Pass the enabled state to the new modifier
+                        enabled = !isRunning
+                    )
+                    .fillMaxWidth()
+                // The old enabled parameter on OutlinedTextField is no longer needed
+                // because the menuAnchor now controls the enabled state of the dropdown.
             )
             ExposedDropdownMenu(
                 expanded = isSetupDropdownExpanded,
                 onDismissRequest = { isSetupDropdownExpanded = false }
             ) {
+                // The DropdownMenuItems for your setups go here...
+                // No changes are needed inside this menu.
                 loadedSetups.forEach { setup ->
                     DropdownMenuItem(
                         text = { Text(setup.name) },
@@ -292,6 +307,7 @@ fun PTTimerScreen(
                 }
             }
         }
+
     }
 }
 
