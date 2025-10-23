@@ -26,6 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -228,23 +229,30 @@ fun SetupScreen(
                     Modifier.weight(1f)
                 )
             }
-
             // --- Row 11: Setups Spinner ---
             var expanded by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(
                 expanded = expanded,
-                onExpandedChange = { expanded = !expanded }) {
+                onExpandedChange = { expanded = !expanded }
+            ) {
                 OutlinedTextField(
                     value = viewModel.activeSetupName ?: "Select a Setup",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Setups") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    // --- THE FIX IS HERE ---
                     modifier = Modifier
-                        .menuAnchor()
+                        .menuAnchor(
+                            type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                            enabled = true // This menu can always be opened
+                        )
                         .fillMaxWidth()
                 )
-                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
                     loadedSetups.forEach { setup ->
                         DropdownMenuItem(
                             text = { Text(setup.name) },
@@ -257,7 +265,6 @@ fun SetupScreen(
                     }
                 }
             }
-
             // --- Row 12: New Setup Name Field ---
             OutlinedTextField(
                 value = newSetupName,
@@ -266,7 +273,6 @@ fun SetupScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
-
             // Row with the first three buttons, using Surface
             Row(modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
@@ -436,11 +442,18 @@ fun SoundDropdown(
             readOnly = true,
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            // --- THE FIX IS HERE ---
             modifier = Modifier
-                .menuAnchor()
+                .menuAnchor(
+                    type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                    enabled = true // Sound dropdowns can always be changed
+                )
                 .fillMaxWidth()
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
             soundOptions.forEach { sound ->
                 DropdownMenuItem(
                     text = { Text(sound.displayName) },
@@ -453,6 +466,7 @@ fun SoundDropdown(
         }
     }
 }
+
 
 @Composable
 fun TimerInputField(
