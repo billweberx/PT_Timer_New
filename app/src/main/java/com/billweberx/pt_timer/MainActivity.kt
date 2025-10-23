@@ -16,24 +16,29 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.billweberx.pt_timer.ui.theme.PT_TimerTheme
+import androidx.annotation.Keep
 
-// --- Data classes updated for the new design ---
-data class SoundOption(val displayName: String, val resourceId: Int)
 
+@Keep
 data class TimerSetup(
     val name: String,
-    val config: SetupConfig
+    val config: SetupConfig, // This correctly matches the "config": {} object in your JSON
+    val startRepSoundId: Int,
+    val startRestSoundId: Int,
+    val startSetRestSoundId: Int,
+    val completeSoundId: Int
 )
 
+@Keep
 data class SetupConfig(
-    val moveToTime: String = "5",
-    val exerciseTime: String = "30",
-    val moveFromTime: String = "0",
-    val restTime: String = "10",
-    val reps: String = "1",
-    val sets: String = "1",
-    val setRestTime: String = "60",
-    val totalTime: String = "0"
+    val moveToTime: String,
+    val exerciseTime: String,
+    val moveFromTime: String,
+    val restTime: String,
+    val reps: String,
+    val sets: String,
+    val setRestTime: String,
+    val totalTime: String
 )
 // Data class for the main timer screen's reactive state, moved here to be globally accessible
 data class TimerScreenState(
@@ -42,7 +47,7 @@ data class TimerScreenState(
     val progressDisplay: String = "",
     val currentSet: Int = 0,
     val currentRep: Int = 0,
-    val totalTimeRemaining: Int = 0
+    val activePhase: String = "Exercise"
 )
 
 class MainActivity : ComponentActivity() {
@@ -108,9 +113,7 @@ fun AppNavigation(viewModel: TimerViewModel) {
         composable("settings") {
             SetupScreen(
                 navController = navController,
-                viewModel = viewModel,
-                onImport = { json -> viewModel.importSetupsFromJson(json) },
-                onExport = { viewModel.exportSetupsToJson() }
+                viewModel = viewModel
             )
         }
     }

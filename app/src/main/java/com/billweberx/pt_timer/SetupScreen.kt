@@ -1,24 +1,29 @@
-package com.billweberx.pt_timer // <-- ADD THIS LINE
+package com.billweberx.pt_timer
 
+import android.net.Uri
+import android.util.Log // <-- FIX #1: ADDED MISSING IMPORT FOR LOG
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -27,6 +32,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,46 +42,61 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext // <-- FIX #2: ENSURED CONTEXT IMPORT
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 
-// In file: app/src/main/java/com/billweberx/pt_timer/SetupScreen.kt
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupScreen(
     navController: NavController,
     viewModel: TimerViewModel,
-    onImport: (String) -> Unit,
-    onExport: () -> String
 ) {
-    // Local state for the "New Exercise Name" field and the confirmation dialog
+    val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
     var newSetupName by remember { mutableStateOf("") }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
 
-    // --- Activity Result Launchers for Import/Export ---
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json"),
-        onResult = { uri ->
-            uri?.let {
-                val json = onExport()
-                navController.context.contentResolver.openOutputStream(it)?.use { stream ->
-                    stream.write(json.toByteArray())
-                }
-            }
-        }
-    )
+    // --- FIX #3: MOVED CONTEXT DEFINITION HERE ---
+    // This must be inside the Composable to be accessed by the launchers.
+    val context = LocalContext.current
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
-        onResult = { uri ->
-            uri?.let {
-                navController.context.contentResolver.openInputStream(it)?.use { stream ->
-                    val json = stream.reader().readText()
-                    onImport(json)
+        onResult = { uri: Uri? ->
+            if (uri == null) {
+                Log.d("Import", "User cancelled file picker.")
+                return@rememberLauncherForActivityResult
+            }
+
+            try {
+                // Use the ContentResolver to robustly read the file's content into a string.
+                val jsonString = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    inputStream.bufferedReader().readText()
                 }
+
+                if (!jsonString.isNullOrBlank()) {
+                    // Pass the clean, valid JSON string to the ViewModel.
+                    viewModel.importSetupsFromJson(jsonString)
+                } else {
+                    Log.e("Import", "Selected file is empty or could not be read.")
+                }
+            } catch (e: Exception) {
+                // If anything goes wrong, log the error instead of crashing the app.
+                Log.e("Import", "Failed to read or parse file from URI: $uri", e)
+            }
+        }
+    )
+    val saveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                // Use the context we defined above
+                viewModel.saveSetupsToUri(context, it)
             }
         }
     )
@@ -84,7 +105,6 @@ fun SetupScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            // Add padding at the top to create space below the system status bar
             .padding(top = 40.dp)
     ) {
         Row(
@@ -94,22 +114,20 @@ fun SetupScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Use a clickable Row for a custom "Icon + Text" button without a background
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.clickable { navController.popBackStack() }
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to Home Icon" // Accessibility for the icon
+                    contentDescription = "Back to Home Icon"
                 )
-                Spacer(modifier = Modifier.width(4.dp)) // A small space between icon and text
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(text = "Home")
             }
 
             Text("Settings", style = MaterialTheme.typography.titleLarge)
 
-            // A spacer on the right to balance the layout and keep "Settings" centered
             Spacer(modifier = Modifier.width(68.dp))
         }
 
@@ -217,7 +235,7 @@ fun SetupScreen(
                 expanded = expanded,
                 onExpandedChange = { expanded = !expanded }) {
                 OutlinedTextField(
-                    value = viewModel.activeSetup?.name ?: "Select a Setup",
+                    value = viewModel.activeSetupName ?: "Select a Setup",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Setups") },
@@ -227,12 +245,12 @@ fun SetupScreen(
                         .fillMaxWidth()
                 )
                 ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    viewModel.loadedSetups.forEach { setup ->
+                    loadedSetups.forEach { setup ->
                         DropdownMenuItem(
                             text = { Text(setup.name) },
                             onClick = {
                                 viewModel.applySetup(setup)
-                                newSetupName = setup.name // Populate name field for easy editing
+                                newSetupName = setup.name
                                 expanded = false
                             }
                         )
@@ -249,65 +267,133 @@ fun SetupScreen(
                 singleLine = true
             )
 
-            // --- Row 13: Save, Delete, Clear Buttons ---
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
-                Button(
-                    onClick = {
-                        val setupToSave = TimerSetup(
-                            name = newSetupName,
-                            config = SetupConfig(
-                                moveToTime = viewModel.moveToTime,
-                                exerciseTime = viewModel.exerciseTime,
-                                moveFromTime = viewModel.moveFromTime,
-                                restTime = viewModel.restTime,
-                                sets = viewModel.sets,
-                                setRestTime = viewModel.setRestTime,
-                                reps = viewModel.reps,
-                                totalTime = viewModel.totalTime
-                            )
-                        )
-                        viewModel.addOrUpdateSetup(setupToSave)
-                    },
-                    enabled = newSetupName.isNotBlank()
+            // Row with the first three buttons, using Surface
+            Row(modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // --- Save Exercise Button ---
+                val saveInteractionSource = remember { MutableInteractionSource() }
+                val saveButtonEnabled = newSetupName.isNotBlank()
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (saveButtonEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (saveButtonEnabled) MaterialTheme.colorScheme.onPrimary else Color.Gray,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.pressable(
+                        interactionSource = saveInteractionSource,
+                        enabled = saveButtonEnabled,
+                        onClick = { viewModel.addOrUpdateSetup(newSetupName) }
+                    )
                 ) {
-                    Text("Save\nExercise", textAlign = TextAlign.Center)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Text("Save\nExercise", textAlign = TextAlign.Center)
+                    }
                 }
 
-                Button(
-                    onClick = {
-                        viewModel.activeSetup?.name?.let {
-                            viewModel.deleteSetup(it)
-                            newSetupName = "" // Clear name field after deleting
+                // --- Delete Exercise Button ---
+                val deleteInteractionSource = remember { MutableInteractionSource() }
+                val deleteButtonEnabled = viewModel.activeSetup != null
+                Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    color = if (deleteButtonEnabled) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (deleteButtonEnabled) Color.White else Color.Gray,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.pressable(
+                        interactionSource = deleteInteractionSource,
+                        enabled = deleteButtonEnabled,
+                        onClick = {
+                            viewModel.activeSetup?.name?.let {
+                                viewModel.deleteSetup(it)
+                                newSetupName = ""
+                            }
                         }
-                    },
-                    enabled = viewModel.activeSetup != null,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCDD2))
+                    )
                 ) {
-                    Text("Delete\nExercise", textAlign = TextAlign.Center)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Text("Delete\nExercise", textAlign = TextAlign.Center)
+                    }
                 }
 
-                Button(
-                    onClick = { showClearConfirmDialog = true },
-                    enabled = viewModel.loadedSetups.isNotEmpty(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCDD2))
+                // --- Clear Setup Button ---
+                val clearInteractionSource = remember { MutableInteractionSource() }
+                val clearButtonEnabled = loadedSetups.isNotEmpty()
+                Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    color = if (clearButtonEnabled) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (clearButtonEnabled) Color.White else Color.Gray,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.pressable(
+                        interactionSource = clearInteractionSource,
+                        enabled = clearButtonEnabled,
+                        onClick = { showClearConfirmDialog = true }
+                    )
                 ) {
-                    Text("Clear\nSetup", textAlign = TextAlign.Center)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Text("Clear\nSetup", textAlign = TextAlign.Center)
+                    }
                 }
             }
-
             // --- Row 14: Import/Export Buttons ---
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
-                Button(onClick = { importLauncher.launch("application/json") }) {
-                    Text("Import")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+            ) {
+                // --- Import Button ---
+                val importInteractionSource = remember { MutableInteractionSource() }
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.tertiary,
+                    contentColor = MaterialTheme.colorScheme.onTertiary,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.pressable(
+                        interactionSource = importInteractionSource,
+                        onClick = { importLauncher.launch("application/json") }
+                    )
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                    ) {
+                        Text("Import")
+                    }
                 }
-                Button(onClick = { exportLauncher.launch("PT_Timer_Setups.json") }) {
-                    Text("Export")
+
+                // --- Export Button ---
+                val exportInteractionSource = remember { MutableInteractionSource() }
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.tertiary,
+                    contentColor = MaterialTheme.colorScheme.onTertiary,
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.pressable(
+                        interactionSource = exportInteractionSource,
+                        onClick = { saveLauncher.launch("PT_Timer_Setups.json") }
+                    )
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                    ) {
+                        Text("Export")
+                    }
                 }
             }
+            Spacer(modifier = Modifier.height(50.dp))
         }
     }
 
-    // --- Confirmation Dialog for Clearing Setups ---
     if (showClearConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showClearConfirmDialog = false },
@@ -329,7 +415,6 @@ fun SetupScreen(
     }
 }
 
-// --- Re-usable Composables for this screen ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SoundDropdown(
@@ -369,7 +454,6 @@ fun SoundDropdown(
     }
 }
 
-// This is the same TimerInputField from the old PTTimerScreen, now used here.
 @Composable
 fun TimerInputField(
     label: String,

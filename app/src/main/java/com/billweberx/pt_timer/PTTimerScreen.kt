@@ -1,23 +1,24 @@
 package com.billweberx.pt_timer // Make sure this line is at the very top
 
 import android.media.MediaPlayer
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -27,12 +28,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,8 +59,8 @@ fun PTTimerScreen(
 
     // State from ViewModel
     val timerState by viewModel.timerScreenState.collectAsStateWithLifecycle()
-
-
+    val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
+    var isSetupDropdownExpanded by remember { mutableStateOf(false) }
     val playSound: (Int) -> Unit = { resourceId ->
         if (resourceId != -1) {
             coroutineScope.launch {
@@ -77,10 +81,10 @@ fun PTTimerScreen(
 
     val isRepsModeValid = hasReps && hasSets
     val isTimeModeValid = hasTotalTime
-
     val isReadyToStart = timerState.status == "Ready"
     val isStartEnabled = isReadyToStart && (isRepsModeValid || isTimeModeValid)
     val isRunning by remember { derivedStateOf { timerState.status != "Ready" && timerState.status != "Finished" } }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -106,93 +110,132 @@ fun PTTimerScreen(
         // --- Row 2: Phase Status ---
         Text(timerState.status, style = MaterialTheme.typography.headlineMedium)
 
-        // --- Row 3: Set, Rep, and Countdown Timer ---
+        // --- Row 3: Set, Rep, and Countdown Timer (FIXED) ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isRunning || viewModel.isPaused) {
-                Text(
-                    text = if (isRunning || viewModel.isPaused) {
-                        // If timer is active, calculate the countdown
-                        val totalSets = viewModel.sets.toDoubleOrNull()?.toInt() ?: 0
-                        val displaySet = (totalSets - timerState.currentSet + 1).coerceAtLeast(1)
-                        "Set: $displaySet"
-                    } else {
-                        // If timer is stopped, show the total sets from the read-only field
-                        val totalSets = viewModel.sets.toDoubleOrNull()?.toInt() ?: 0
-                        // Only show if the value is valid
-                        if (totalSets > 0) "Set: $totalSets" else ""
-                    },
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
+            // SETS DISPLAY
+            Text(
+                text = if (isRunning || viewModel.isPaused) {
+                    val totalSets = viewModel.sets.toIntOrNull() ?: 0
+                    // Display sets remaining instead of a countdown
+                    "Set: ${timerState.currentSet}/$totalSets"
+                } else {
+                    val totalSets = viewModel.sets.toIntOrNull() ?: 0
+                    if (totalSets > 0) "Sets: $totalSets" else ""
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
+            )
+
+            // MAIN COUNTDOWN TIMER
             Text(
                 text = timerState.remainingTime.toString(),
                 style = MaterialTheme.typography.displayLarge,
                 fontWeight = FontWeight.Bold
             )
-            // Placeholder to keep the timer centered, you can add Rep count here if desired
-            Spacer(modifier = Modifier.width(40.dp))
+
+            // REPS DISPLAY (THIS REPLACES THE SPACER)
+            Text(
+                text = if ((isRunning || viewModel.isPaused) && hasReps) {
+                    val totalReps = viewModel.reps.toIntOrNull() ?: 0
+                    // Display reps remaining in the current set
+                    "Rep: ${timerState.currentRep}/$totalReps"
+                } else {
+                    val totalReps = viewModel.reps.toIntOrNull() ?: 0
+                    if (totalReps > 0) "Reps: $totalReps" else ""
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
+            )
         }
 
         // --- Row 4: Progress Display ---
-        if (isRunning || viewModel.isPaused) {
+        // This will now correctly show "Total Time: XXXs" in Total Time mode,
+        // and will be empty in Reps mode (which is fine).
+        if ((isRunning || viewModel.isPaused) && timerState.progressDisplay.isNotEmpty()) {
             Text(
                 text = timerState.progressDisplay,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(vertical = 4.dp)
             )
         }
-
+        // --- NEW: TOTAL TIME REMAINING DISPLAY ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
         ) {
-            // Start/Pause Button
-            Button(
-                onClick = {
-                    if (isRunning && !viewModel.isPaused) {
-                        // If it's running and NOT paused, then we should pause it.
-                        viewModel.pauseTimer()
-                    } else {
-                        // Otherwise (if it's not running, or if it IS running but is paused), we should start/resume it.
-                        viewModel.startTimer(playSound)
-                    }
-                },
-
-                enabled = isStartEnabled || isRunning || viewModel.isPaused,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning && !viewModel.isPaused) Color(0xFFFFF9C4) else Color(
-                        0xFFC8E6C9
-                    )
-                )
-            ) {
-                if (isRunning && !viewModel.isPaused) {
-                    Icon(Icons.Default.Pause, contentDescription = "Pause")
+            //  Start/Pause Button
+            val startInteractionSource = remember { MutableInteractionSource() }
+            val isStartButtonEnabled = isStartEnabled || isRunning || viewModel.isPaused
+            Surface(
+                shape = CircleShape,
+                // The color now also reflects the enabled state
+                color = if (isStartButtonEnabled) {
+                    if (isRunning && !viewModel.isPaused) Color(0xFFFFF9C4) else Color(0xFFC8E6C9)
                 } else {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = if (viewModel.isPaused) "Resume" else "Start"
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) // A disabled look
+                },
+                contentColor = if (isStartButtonEnabled) Color.Black else Color.Gray,
+                modifier = Modifier
+                    .size(64.dp)
+                    .pressable(
+                        interactionSource = startInteractionSource,
+                        enabled = isStartButtonEnabled, // <-- Pass the enabled state here
+                        onClick = {
+                            // No if-check needed here anymore!
+                            if (isRunning && !viewModel.isPaused) {
+                                viewModel.pauseTimer()
+                            } else {
+                                if (viewModel.isPaused) {
+                                    viewModel.resumeTimer(playSound)
+                                } else {
+                                    viewModel.startTimer(playSound)
+                                }
+                            }
+                        }
                     )
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (isRunning && !viewModel.isPaused) {
+                        Icon(Icons.Default.Pause, contentDescription = "Pause")
+                    } else {
+                        Icon(Icons.Default.PlayArrow, contentDescription = if (viewModel.isPaused) "Resume" else "Start")
+                    }
                 }
             }
 
-            // Stop Button
-            Button(
-                onClick = {
-                    viewModel.stopTimer() // Just call the simple stop function
-                },
-                enabled = isRunning || viewModel.isPaused,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCDD2))
+            //  Stop Button
+            val stopInteractionSource = remember { MutableInteractionSource() }
+            val isStopButtonEnabled = isRunning || viewModel.isPaused
+            Surface(
+                shape = CircleShape,
+                // The color now also reflects the enabled state
+                color = if (isStopButtonEnabled) Color(0xFFFFCDD2) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                contentColor = if (isStopButtonEnabled) Color.Black else Color.Gray,
+                modifier = Modifier
+                    .size(64.dp)
+                    .pressable(
+                        interactionSource = stopInteractionSource,
+                        enabled = isStopButtonEnabled, // <-- Pass the enabled state here
+                        onClick = {
+                            // No if-check needed here anymore!
+                            viewModel.stopTimer()
+                        }
+                    )
             ) {
-                Icon(Icons.Default.Stop, contentDescription = "Stop")
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Stop, contentDescription = "Stop")
+                }
             }
+
+
         }
 
-        // --- Read-only values Section (NEW 3-ROW LAYOUT) ---
-        // First row of read-only fields
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -202,7 +245,6 @@ fun PTTimerScreen(
             ReadOnlyField(label = "Move From", value = viewModel.moveFromTime, modifier = Modifier.weight(1f))
         }
 
-        // Second row of read-only fields
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -212,42 +254,39 @@ fun PTTimerScreen(
             ReadOnlyField(label = "Set Rest", value = viewModel.setRestTime, modifier = Modifier.weight(1f))
         }
 
-        // Third row of read-only fields
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             ReadOnlyField(label = "Reps", value = viewModel.reps, modifier = Modifier.weight(1f))
             ReadOnlyField(label = "Total Time", value = viewModel.totalTime, modifier = Modifier.weight(1f))
-            Spacer(modifier = Modifier.weight(1f)) // Add a spacer to align with the rows above
+            Spacer(modifier = Modifier.weight(1f))
         }
-
-
-        // --- Row 8: Setups Spinner Box ---
         ExposedDropdownMenuBox(
-            expanded = false, // This is a placeholder, real state is needed
-            onExpandedChange = { }
+            expanded = isSetupDropdownExpanded,
+            onExpandedChange = { isSetupDropdownExpanded = !isSetupDropdownExpanded }
         ) {
             OutlinedTextField(
                 value = viewModel.activeSetup?.name ?: "Select a Setup",
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Setups") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = false) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isSetupDropdownExpanded) },
                 modifier = Modifier
                     .menuAnchor()
                     .fillMaxWidth(),
-                enabled = !isRunning // Disable while timer is running
+                enabled = !isRunning
             )
             ExposedDropdownMenu(
-                expanded = false,
-                onDismissRequest = { }
+                expanded = isSetupDropdownExpanded,
+                onDismissRequest = { isSetupDropdownExpanded = false }
             ) {
-                viewModel.loadedSetups.forEach { setup ->
+                loadedSetups.forEach { setup ->
                     DropdownMenuItem(
                         text = { Text(setup.name) },
                         onClick = {
                             viewModel.applySetup(setup)
+                            isSetupDropdownExpanded = false
                         }
                     )
                 }
