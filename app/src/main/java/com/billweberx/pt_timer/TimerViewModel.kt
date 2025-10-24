@@ -37,6 +37,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     // --- State Management ---
     private val _setups = MutableStateFlow<List<TimerSetup>>(emptyList())
     val loadedSetups = _setups.asStateFlow()
+    private var setMasterClock = 0L
 
     private val _timerScreenState = MutableStateFlow(TimerScreenState())
     val timerScreenState = _timerScreenState.asStateFlow()
@@ -65,9 +66,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var isPaused by mutableStateOf(false)
         private set
 
-    // Durations
-    private val exercisePhaseDuration: Long get() = (exerciseTime.toLongOrNull() ?: 0L) + (moveToTime.toLongOrNull() ?: 0L)
-    private val restPhaseDuration: Long get() = (restTime.toLongOrNull() ?: 0L) + (moveFromTime.toLongOrNull() ?: 0L)
+    // Inside TimerViewModel class
+
+    // The current state of our machine. Starts in 'Ready'.
+    private var currentState: TimerState = TimerState.Ready// Holds the state right before we paused, so we can resume correctly.
+    private var stateBeforePause: TimerState? = null
+
+    // These will track our progress through the workout
+    private var currentRepNumber = 1
+    private var currentSetNumber = 1
 
     init {
         initializeSounds()
@@ -213,255 +220,221 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Timer Functions ---
     fun startTimer(onPlaySound: (Int) -> Unit) {
-        // If a job is already active, do nothing.
         if (timerJob?.isActive == true) return
-
-        // A fresh start ALWAYS sets isPaused to false.
         isPaused = false
+        // Reset progress counters for a fresh start
+        currentRepNumber = 1
+        currentSetNumber = 1
 
+        // Initialize the master clock if in Total Time mode
+        val reps = this.reps.toIntOrNull() ?: 1
+        val totalTime = this.totalTime.toLongOrNull() ?: 0L
+        setMasterClock = if (reps <= 0 && totalTime > 0) totalTime else 0
+
+        // Determine the very first state based on mode
+        currentState = determineInitialState()
+
+        // Launch the state machine
         timerJob = viewModelScope.launch {
-            try {
-                runTimer(onPlaySound)
-            } finally {
-                if (!isPaused) {
-                    stopTimer()
-                }
-            }
+            runStateMachine(onPlaySound)
         }
     }
-
 
     fun stopTimer() {
         timerJob?.cancel()
         timerJob = null
         isPaused = false
+        currentState = TimerState.Ready
+        // Reset the UI to its default state
         _timerScreenState.update { TimerScreenState() }
     }
 
     fun pauseTimer() {
-        if (timerJob?.isActive == true) {
-            // Get the current state values synchronously
-            val currentStatus = _timerScreenState.value.status
-            val remainingTime = _timerScreenState.value.remainingTime
-            val currentSet = _timerScreenState.value.currentSet
-            val currentRep = _timerScreenState.value.currentRep
-            val currentProgressDisplay = _timerScreenState.value.progressDisplay
-            // Now cancel the job
-            isPaused = true
-            timerJob?.cancel()
+        if (timerJob?.isActive != true || isPaused) return
 
-            // Update the state with the values we captured
-            _timerScreenState.value = _timerScreenState.value.copy(
-                activePhase = currentStatus, // Save the phase we were in
-                status = "Paused",
-                // Re-assert the values to ensure they are saved
-                remainingTime = remainingTime,
-                currentSet = currentSet,
-                currentRep = currentRep,
-                progressDisplay = currentProgressDisplay
-            )
+        isPaused = true
+        // Save the current state *with* its remaining time from the UI
+        stateBeforePause = when (val state = currentState) {
+            is TimerState.Exercising -> state.copy(remainingDuration = _timerScreenState.value.remainingTime)
+            is TimerState.Resting -> state.copy(remainingDuration = _timerScreenState.value.remainingTime)
+            is TimerState.SetResting -> state.copy(remainingDuration = _timerScreenState.value.remainingTime)
+            else -> state // For non-timed states like Ready, Finished
         }
+        currentState = TimerState.Paused
+
+        timerJob?.cancel() // Cancel the job AFTER saving the state
+        timerJob = null
+
+        // Update the UI last
+        _timerScreenState.update { it.copy(status = "Paused") }
     }
 
-
-    // In TimerViewModel.kt
     fun resumeTimer(onPlaySound: (Int) -> Unit) {
-        if (isPaused) {
-            // DO NOT set isPaused = false here.
-            // Simply launch a new timer job. The 'isPaused' flag being true is our signal.
-            if (timerJob?.isActive == true) return
+        if (!isPaused || timerJob?.isActive == true) return
 
-            timerJob = viewModelScope.launch {
-                try {
-                    runTimer(onPlaySound)
-                } finally {
-                    // This finally block runs after the coroutine is over.
-                    // If it finished because it was paused again, !isPaused will be false.
-                    // If it finished naturally, !isPaused will be true, and we stop everything.
-                    if (!isPaused) {
-                        stopTimer()
-                    }
-                }
-            }
-        }
-    }
-    private suspend fun runTimer(onPlaySound: (Int) -> Unit) {
-        // --- Phase 1: Determine Mode and Get Values ---
-        val totalReps = this.reps.toIntOrNull() ?: 0
-        val isTotalTimeMode = totalReps <= 0
+        isPaused = false
+        // Restore the state from before we paused. If null, something went wrong, so start fresh.
+        currentState = stateBeforePause ?: determineInitialState()
+        stateBeforePause = null
 
-        // --- Phase 2: Execute Logic Based on Mode ---
-        if (isTotalTimeMode) {
-            //===================================================================
-            //==   TOTAL TIME MODE LOGIC (ANR FIX for Set Rest Pause)          ==
-            //===================================================================
-            Log.d("TIMER_DEBUG", "Starting TOTAL TIME mode.")
-            val totalSets = this.sets.toIntOrNull()?.coerceAtLeast(1) ?: 1
-            val setRestSec = this.setRestTime.toLongOrNull() ?: 0L
-
-            // --- RESUME LOGIC ---
-            val startSet = if (isPaused) _timerScreenState.value.currentSet.coerceAtLeast(1) else 1
-            var resumePhase = if (isPaused) _timerScreenState.value.activePhase else null
-            var resumeTime = if (isPaused) _timerScreenState.value.remainingTime.toLong() else null
-            val resumeMasterClock = if (isPaused) _timerScreenState.value.progressDisplay.filter { it.isDigit() }.toLongOrNull() else null
-            Log.d("TIMER_DEBUG", "runTimer(TotalTime). isPaused=$isPaused, Phase:$resumePhase, PTime:$resumeTime, MTime:$resumeMasterClock")
-            isPaused = false
-            // --- END RESUME LOGIC ---
-            for (currentSet in startSet..totalSets) {
-                if (!coroutineContext.isActive) return
-                if (resumePhase == "Set Rest") {
-                    _timerScreenState.update { it.copy(status = "Set Rest", progressDisplay = "Set Rest") }
-                    if (resumeTime == null) { onPlaySound(selectedStartSetRestSound.resourceId) }
-
-                    val duration = resumeTime ?: setRestSec
-                    for (t in duration downTo 1) {
-                        if (!coroutineContext.isActive) return
-                        _timerScreenState.update { it.copy(remainingTime = t.toInt()) }
-                        delay(1000)
-                    }
-                    // Clear the resume state and 'continue' to the next iteration of the 'for' loop.
-                    resumeTime = null; resumePhase = null
-                    continue
-                }
-
-                val totalDurationForSet = this.totalTime.toLongOrNull() ?: 0L
-                if (totalDurationForSet <= 0) continue
-
-                var timeRemainingInMasterClock = resumeMasterClock ?: totalDurationForSet
-
-                while (timeRemainingInMasterClock > 0 && coroutineContext.isActive) {
-                    // --- 1. EXERCISE PHASE ---
-                    if (resumePhase == null || resumePhase.startsWith("Exercise")) {
-                        _timerScreenState.update { it.copy(status = "Exercise!") }
-                        if (resumeTime == null) { onPlaySound(selectedStartRepSound.resourceId) }
-                        val duration = resumeTime ?: exercisePhaseDuration
-                        for (t in duration downTo 1) {
-                            if (!coroutineContext.isActive || timeRemainingInMasterClock <= 0) break
-                            _timerScreenState.update { it.copy(
-                                remainingTime = t.toInt(),
-                                progressDisplay = "Time Remaining: $timeRemainingInMasterClock sec",
-                                currentSet = currentSet
-                            )}
-                            timeRemainingInMasterClock--
-                            delay(1000)
-                        }
-                        resumeTime = null; resumePhase = null
-                    }
-
-                    if (!coroutineContext.isActive || timeRemainingInMasterClock <= 0) break
-
-                    // --- 2. REST PHASE ---
-                    if (restPhaseDuration > 0 && (resumePhase == null || resumePhase == "Rest")) {
-                        _timerScreenState.update { it.copy(status = "Rest") }
-                        if (resumeTime == null) { onPlaySound(selectedStartRestSound.resourceId) }
-                        val duration = resumeTime ?: restPhaseDuration
-                        for (t in duration downTo 1) {
-                            if (!coroutineContext.isActive || timeRemainingInMasterClock <= 0) break
-                            _timerScreenState.update { it.copy(
-                                remainingTime = t.toInt(),
-                                progressDisplay = "Time Remaining: $timeRemainingInMasterClock sec",
-                                currentSet = currentSet
-                            )}
-                            timeRemainingInMasterClock--
-                            delay(1000)
-                        }
-                        resumeTime = null; resumePhase = null
-                    }
-                } // --- End of inner timed loop ---
-
-                // --- 3. SET REST PHASE (for natural transition) ---
-                val isLastSet = currentSet == totalSets
-                if (!isLastSet && setRestSec > 0 && coroutineContext.isActive) {
-                    _timerScreenState.update { it.copy(status = "Set Rest", progressDisplay = "Set Rest") }
-                    onPlaySound(selectedStartSetRestSound.resourceId)
-                    for (t in setRestSec downTo 1) {
-                        if (!coroutineContext.isActive) return
-                        _timerScreenState.update { it.copy(remainingTime = t.toInt()) }
-                        delay(1000)
-                    }
-                }
-            } // --- End of outer 'for' loop for sets ---
-        } else {
-            //==============================================================
-            //==                  EXISTING: REPS MODE LOGIC                 ==
-            //==============================================================
-            Log.d("TIMER_DEBUG", "Starting REPS mode.")
-            val totalSets = this.sets.toIntOrNull()?.coerceAtLeast(1) ?: 1
-            val setRestSec = this.setRestTime.toLongOrNull() ?: 0L
-
-            // --- RESUME LOGIC (for Reps mode) ---
-            val startSet = if (isPaused) _timerScreenState.value.currentSet.coerceAtLeast(1) else 1
-            val startRep = if (isPaused) _timerScreenState.value.currentRep.coerceAtLeast(1) else 1
-            var resumePhase = if (isPaused) _timerScreenState.value.activePhase else null
-            var resumeTime = if (isPaused) _timerScreenState.value.remainingTime.toLong() else null
-            Log.d("TIMER_DEBUG", "runTimer(Reps) started. isPaused = $isPaused, Phase: $resumePhase, Time: $resumeTime")
-            isPaused = false
-            // --- END RESUME LOGIC ---
-
-            for (currentSet in startSet..totalSets) {
-                if (!coroutineContext.isActive) return
-                val initialRepInLoop = if (currentSet == startSet && resumePhase != null) startRep else 1
-
-                for (currentRep in initialRepInLoop..totalReps) {
-                    if (!coroutineContext.isActive) return
-
-                    // --- 1. EXERCISE PHASE ---
-                    if (resumePhase == null || resumePhase.startsWith("Exercise")) {
-                        _timerScreenState.update { it.copy(status = "Exercise!", currentSet = currentSet, currentRep = currentRep) }
-                        if (resumeTime == null) { onPlaySound(selectedStartRepSound.resourceId) }
-                        val duration = resumeTime ?: exercisePhaseDuration
-                        for (t in duration downTo 1) {
-                            if (!coroutineContext.isActive) return
-                            _timerScreenState.update { it.copy(remainingTime = t.toInt()) }
-                            delay(1000)
-                        }
-                        resumeTime = null
-                        resumePhase = null
-                    }
-
-                    val isLastRepOfLastSet = (currentRep == totalReps && currentSet == totalSets)
-                    if (isLastRepOfLastSet) break
-
-                    // --- 2. REP/SET REST PHASES ---
-                    if (currentRep < totalReps) { // Rep Rest
-                        if (restPhaseDuration > 0 && (resumePhase == null || resumePhase == "Rest")) {
-                            _timerScreenState.update { it.copy(status = "Rest") }
-                            if (resumeTime == null) { onPlaySound(selectedStartRestSound.resourceId) }
-                            val duration = resumeTime ?: restPhaseDuration
-                            for (t in duration downTo 1) {
-                                if (!coroutineContext.isActive) return
-                                _timerScreenState.update { it.copy(remainingTime = t.toInt()) }
-                                delay(1000)
-                            }
-                            resumeTime = null; resumePhase = null
-                        }
-                    } else { // Set Rest
-                        if (setRestSec > 0 && (resumePhase == null || resumePhase == "Set Rest")) {
-                            _timerScreenState.update { it.copy(status = "Set Rest") }
-                            if (resumeTime == null) { onPlaySound(selectedStartSetRestSound.resourceId) }
-                            val duration = resumeTime ?: setRestSec
-                            for (t in duration downTo 1) {
-                                if (!coroutineContext.isActive) return
-                                _timerScreenState.update { it.copy(remainingTime = t.toInt()) }
-                                delay(1000)
-                            }
-                            resumeTime = null; resumePhase = null
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- FINISH (common to both modes) ---
-        if (coroutineContext.isActive) {
-            Log.d("TIMER_DEBUG", "Timer finished naturally.")
-            onPlaySound(selectedCompleteSound.resourceId)
-            _timerScreenState.update { it.copy(status = "Finished", progressDisplay = "") }
+        // Launch a new job that will pick up from the restored state
+        timerJob = viewModelScope.launch {
+            runStateMachine(onPlaySound, isResuming = true)
         }
     }
 
+    // This is the new state machine runner
+    private suspend fun runStateMachine(onPlaySound: (Int) -> Unit, isResuming: Boolean = false) {
+        var resuming = isResuming
+        // The loop continues as long as we're in an active state
+        while (coroutineContext.isActive && currentState !is TimerState.Finished && currentState !is TimerState.Ready && currentState !is TimerState.Paused) {
+
+            // The 'when' block is the heart of the state machine.
+            when (val state = currentState) {
+                is TimerState.Exercising -> {
+                    _timerScreenState.update {
+                        it.copy(
+                            status = "Exercise!",
+                            currentRep = currentRepNumber,
+                            currentSet = currentSetNumber
+                        )
+                    }
+                    // ONLY play sound if we are starting from the beginning of this state
+                    if (state.remainingDuration == state.totalDuration && !resuming) {
+                        onPlaySound(selectedStartRepSound.resourceId)
+                    }
+                    countdown(state.remainingDuration)
+                    currentState = determineNextStateAfterExercise()
+                }
+
+                is TimerState.Resting -> {
+                    _timerScreenState.update { it.copy(status = "Rest") }
+                    if (state.remainingDuration == state.totalDuration && !resuming) {
+                        onPlaySound(selectedStartRestSound.resourceId)
+                    }
+                    countdown(state.remainingDuration)
+                    currentState = determineNextStateAfterRest()
+                }
+
+                is TimerState.SetResting -> {
+                    _timerScreenState.update { it.copy(status = "Set Rest") }
+                    if (state.remainingDuration == state.totalDuration && !resuming) {
+                        onPlaySound(selectedStartSetRestSound.resourceId)
+                    }
+                    countdown(state.remainingDuration)
+                    currentState = determineNextStateAfterSetRest()
+                }
+                // Paused, Ready, and Finished states will cause the while loop to terminate.
+                else -> break
+            }
+            resuming = false
+        }
+
+    // If the loop finishes because the state became Finished, handle completion.
+    if (currentState is TimerState.Finished) {
+        _timerScreenState.update { it.copy(status = "Finished!", remainingTime = 0, progressDisplay = "") }
+        onPlaySound(selectedCompleteSound.resourceId)
+        stopTimer()
+    }
+}
 
 
+    // A simple, reusable, cancellable countdown function
+    private suspend fun countdown(seconds: Int) {
+        val isInTotalTimeMode = setMasterClock > 0
+
+        for (t in seconds downTo 1) {
+            if (!coroutineContext.isActive) return // Exit immediately if cancelled
+
+            // Decrement the master clock if we are in total time mode
+            if (isInTotalTimeMode) {
+                setMasterClock--
+                _timerScreenState.update {
+                    it.copy(
+                        remainingTime = t,
+                        progressDisplay = "Time Remaining: $setMasterClock sec"
+                    )
+                }
+            } else {
+                _timerScreenState.update { it.copy(remainingTime = t, progressDisplay = "") }
+            }
+            delay(1000)
+
+            // If the master clock hits zero, break the current phase early
+            if (isInTotalTimeMode && setMasterClock <= 0) {
+                break
+            }
+        }
+    }
+        // --- State Transition Logic ---
+        private fun determineInitialState(): TimerState {
+            // In both modes, the first state is always Exercising
+            val exerciseSec = (this.exerciseTime.toLongOrNull() ?: 0L).toInt()
+            val moveToSec = (this.moveToTime.toLongOrNull() ?: 0L).toInt()
+            val fullExerciseDuration = exerciseSec + moveToSec
+            return TimerState.Exercising(fullExerciseDuration, fullExerciseDuration)
+        }
+
+        private fun determineNextStateAfterExercise(): TimerState {
+            val totalReps = this.reps.toIntOrNull() ?: 1
+            val totalSets = this.sets.toIntOrNull() ?: 1
+            val setRestSec = (this.setRestTime.toLongOrNull() ?: 0L).toInt()
+
+            // In total time mode, we check the master clock first.
+            if (setMasterClock > 0) {
+                // Go to the next rep's rest, as long as time remains
+                val restSec = (this.restTime.toLongOrNull() ?: 0L).toInt()
+                val moveFromSec = (this.moveFromTime.toLongOrNull() ?: 0L).toInt()
+                val fullRestDuration = restSec + moveFromSec
+                return TimerState.Resting(fullRestDuration, fullRestDuration)
+            }
+
+            // Standard Reps mode logic
+            return if (currentRepNumber < totalReps) {
+                // Go to the next rep's rest
+                currentRepNumber++
+                val restSec = (this.restTime.toLongOrNull() ?: 0L).toInt()
+                val moveFromSec = (this.moveFromTime.toLongOrNull() ?: 0L).toInt()
+                val fullRestDuration = restSec + moveFromSec
+                TimerState.Resting(fullRestDuration, fullRestDuration)
+            } else if (currentSetNumber < totalSets) {
+                // Go to the next set's rest
+                currentRepNumber = 1
+                currentSetNumber++
+                TimerState.SetResting(setRestSec, setRestSec)
+            } else {
+                // Workout is complete
+                TimerState.Finished
+            }
+        }
+    private fun determineNextStateAfterRest(): TimerState {
+        // After a rest, check if the master clock has expired before starting a new exercise.
+        if (setMasterClock <= 0) {
+            // Time is up, so we need to determine what's next after an exercise phase would have ended.
+            return determineNextStateAfterExercise()
+        }
+
+        // If time still remains, proceed to the normal exercise state.
+        val exerciseSec = (this.exerciseTime.toLongOrNull() ?: 0L).toInt()
+        val moveToSec = (this.moveToTime.toLongOrNull() ?: 0L).toInt()
+        val fullExerciseDuration = exerciseSec + moveToSec
+        return TimerState.Exercising(fullExerciseDuration, fullExerciseDuration)
+    }
+
+        private fun determineNextStateAfterSetRest(): TimerState {
+            // After a set rest, we start a new set.
+            val reps = this.reps.toIntOrNull() ?: 1
+            val totalTime = this.totalTime.toLongOrNull() ?: 0L
+
+            // Re-initialize the master clock for the new set
+            setMasterClock = if (reps <= 0 && totalTime > 0) totalTime else 0
+
+            // Always go back to exercising for the new set
+            val exerciseSec = (this.exerciseTime.toLongOrNull() ?: 0L).toInt()
+            val moveToSec = (this.moveToTime.toLongOrNull() ?: 0L).toInt()
+            val fullExerciseDuration = exerciseSec + moveToSec
+            return TimerState.Exercising(fullExerciseDuration, fullExerciseDuration)
+        }
 
     // --- Preference and Sound Initialization ---
     fun saveStateToPrefs() {
@@ -511,4 +484,17 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         selectedCompleteSound = soundOptions.find { it.resourceId == prefs.getInt(MainActivity.KEY_COMPLETE_SOUND_ID, defaultSound.resourceId) } ?: defaultSound
     }
 }
+
+sealed class TimerState {
+    // States that have a duration and a concept of progress
+    data class Exercising(val totalDuration: Int, val remainingDuration: Int) : TimerState()
+    data class Resting(val totalDuration: Int, val remainingDuration: Int) : TimerState()
+    data class SetResting(val totalDuration: Int, val remainingDuration: Int) : TimerState()
+
+    // States that are points in time or represent a status
+    data object Paused : TimerState()
+    data object Finished : TimerState()
+    data object Ready : TimerState() // The initial state before starting
+}
+
 
