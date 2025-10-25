@@ -305,8 +305,8 @@ fun SetupScreen(
                 val deleteButtonEnabled = viewModel.activeSetup != null
                 Surface(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                    color = if (deleteButtonEnabled) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (deleteButtonEnabled) Color.White else Color.Gray,
+                    color = if (deleteButtonEnabled) Color(0xFFFFCDD2) else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (deleteButtonEnabled) Color.Black else Color.Gray,
                     tonalElevation = 2.dp,
                     modifier = Modifier.pressable(
                         interactionSource = deleteInteractionSource,
@@ -332,8 +332,8 @@ fun SetupScreen(
                 val clearButtonEnabled = loadedSetups.isNotEmpty()
                 Surface(
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                    color = if (clearButtonEnabled) Color(0xFFD32F2F) else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (clearButtonEnabled) Color.White else Color.Gray,
+                    color = if (clearButtonEnabled) Color(0xFFFFCDD2) else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (clearButtonEnabled) Color.Black else Color.Gray,
                     tonalElevation = 2.dp,
                     modifier = Modifier.pressable(
                         interactionSource = clearInteractionSource,

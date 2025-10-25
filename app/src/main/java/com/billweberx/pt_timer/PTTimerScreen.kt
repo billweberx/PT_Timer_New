@@ -117,7 +117,7 @@ fun PTTimerScreen(
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // SETS DISPLAY
+            // --- LEFT SIDE: SETS DISPLAY (RESTORED) ---
             Text(
                 text = if (isRunning || viewModel.isPaused) {
                     val totalSets = viewModel.sets.toIntOrNull() ?: 0
@@ -132,40 +132,34 @@ fun PTTimerScreen(
                 modifier = Modifier.weight(1f)
             )
 
-            // MAIN COUNTDOWN TIMER
+            // --- CENTER: MAIN COUNTDOWN TIMER (UNCHANGED) ---
             Text(
                 text = timerState.remainingTime.toString(),
                 style = MaterialTheme.typography.displayLarge,
                 fontWeight = FontWeight.Bold
             )
 
-            // REPS DISPLAY (THIS REPLACES THE SPACER)
+            // --- RIGHT SIDE: REPS OR TIME DISPLAY (CORRECT LOGIC) ---
             Text(
-                text = if ((isRunning || viewModel.isPaused) && hasReps) {
-                    val totalReps = viewModel.reps.toIntOrNull() ?: 0
-                    // Display reps remaining in the current set
-                    "Rep: ${timerState.currentRep}/$totalReps"
+                text = if (hasReps) {
+                    // Reps Mode: Show the rep counter
+                    if (isRunning || viewModel.isPaused) {
+                        val totalReps = viewModel.reps.toIntOrNull() ?: 0
+                        "Rep: ${timerState.currentRep}/$totalReps"
+                    } else {
+                        val totalReps = viewModel.reps.toIntOrNull() ?: 0
+                        if (totalReps > 0) "Reps: $totalReps" else ""
+                    }
                 } else {
-                    val totalReps = viewModel.reps.toIntOrNull() ?: 0
-                    if (totalReps > 0) "Reps: $totalReps" else ""
+                    // Total Time Mode: Show the progressDisplay text from the ViewModel
+                    timerState.progressDisplay
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f)
             )
         }
-
-        // --- Row 4: Progress Display ---
-        // This will now correctly show "Total Time: XXXs" in Total Time mode,
-        // and will be empty in Reps mode (which is fine).
-        if ((isRunning || viewModel.isPaused) && timerState.progressDisplay.isNotEmpty()) {
-            Text(
-                text = timerState.progressDisplay,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(vertical = 4.dp)
-            )
-        }
-        // --- NEW: TOTAL TIME REMAINING DISPLAY ---
+        // Row 4: Start/Pause and Stop Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
@@ -236,6 +230,7 @@ fun PTTimerScreen(
 
 
         }
+        // Rows 5 - 7: Timer Configuration
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -263,7 +258,7 @@ fun PTTimerScreen(
             ReadOnlyField(label = "Total Time", value = viewModel.totalTime, modifier = Modifier.weight(1f))
             Spacer(modifier = Modifier.weight(1f))
         }
-        // the Setups dropdown
+        // Row 8:  the Setups dropdown
         ExposedDropdownMenuBox(
             expanded = isSetupDropdownExpanded,
             onExpandedChange = {

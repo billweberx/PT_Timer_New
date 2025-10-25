@@ -352,7 +352,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 _timerScreenState.update {
                     it.copy(
                         remainingTime = t,
-                        progressDisplay = "Time Remaining: $setMasterClock sec"
+                        progressDisplay = "Time: $setMasterClock sec"
                     )
                 }
             } else {
@@ -375,52 +375,60 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             return TimerState.Exercising(fullExerciseDuration, fullExerciseDuration)
         }
 
-        private fun determineNextStateAfterExercise(): TimerState {
-            val totalReps = this.reps.toIntOrNull() ?: 1
-            val totalSets = this.sets.toIntOrNull() ?: 1
-            val setRestSec = (this.setRestTime.toLongOrNull() ?: 0L).toInt()
+    private fun determineNextStateAfterExercise(): TimerState {
+        val totalReps = this.reps.toIntOrNull() ?: 1
+        val hasReps = totalReps > 0
+        val totalSets = this.sets.toIntOrNull() ?: 1
+        val setRestSec = (this.setRestTime.toLongOrNull() ?: 0L).toInt()
 
-            // In total time mode, we check the master clock first.
-            if (setMasterClock > 0) {
-                // Go to the next rep's rest, as long as time remains
-                val restSec = (this.restTime.toLongOrNull() ?: 0L).toInt()
-                val moveFromSec = (this.moveFromTime.toLongOrNull() ?: 0L).toInt()
-                val fullRestDuration = restSec + moveFromSec
-                return TimerState.Resting(fullRestDuration, fullRestDuration)
-            }
-
-            // Standard Reps mode logic
-            return if (currentRepNumber < totalReps) {
-                // Go to the next rep's rest
-                currentRepNumber++
-                val restSec = (this.restTime.toLongOrNull() ?: 0L).toInt()
-                val moveFromSec = (this.moveFromTime.toLongOrNull() ?: 0L).toInt()
-                val fullRestDuration = restSec + moveFromSec
-                TimerState.Resting(fullRestDuration, fullRestDuration)
-            } else if (currentSetNumber < totalSets) {
-                // Go to the next set's rest
-                currentRepNumber = 1
-                currentSetNumber++
-                TimerState.SetResting(setRestSec, setRestSec)
-            } else {
-                // Workout is complete
-                TimerState.Finished
-            }
+        // --- Reps Mode Logic ---
+        // This logic now runs for BOTH modes, but the `currentRepNumber` only matters in Reps mode.
+        if (hasReps && currentRepNumber < totalReps) {
+            // If we have reps and haven't finished them all, go to the next rep's rest.
+            currentRepNumber++
+            val restSec = (this.restTime.toLongOrNull() ?: 0L).toInt()
+            val moveFromSec = (this.moveFromTime.toLongOrNull() ?: 0L).toInt()
+            val fullRestDuration = restSec + moveFromSec
+            return TimerState.Resting(fullRestDuration, fullRestDuration)
         }
+
+        // --- Total Time Mode Logic ---
+        // If we're in total time mode and time still remains, just go to rest. The rep counter doesn't matter.
+        if (!hasReps && setMasterClock > 0) {
+            val restSec = (this.restTime.toLongOrNull() ?: 0L).toInt()
+            val moveFromSec = (this.moveFromTime.toLongOrNull() ?: 0L).toInt()
+            val fullRestDuration = restSec + moveFromSec
+            return TimerState.Resting(fullRestDuration, fullRestDuration)
+        }
+
+        // --- End of Reps/Time or End of Set Logic ---
+        // If we reach here, it means the reps are done OR total time has expired. Time to check for the next set.
+        if (currentSetNumber < totalSets) {
+            // Go to the next set's rest
+            currentRepNumber = 1 // Reset reps for the new set
+            currentSetNumber++
+            return TimerState.SetResting(setRestSec, setRestSec)
+        } else {
+            // Workout is complete
+            return TimerState.Finished
+        }
+    }
     private fun determineNextStateAfterRest(): TimerState {
-        // After a rest, check if the master clock has expired before starting a new exercise.
-        if (setMasterClock <= 0) {
-            // Time is up, so we need to determine what's next after an exercise phase would have ended.
+        val totalReps = this.reps.toIntOrNull() ?: 1
+        val isInTotalTimeMode = totalReps <= 0
+
+        // In TOTAL TIME mode, we check if the master clock has run out.
+        if (isInTotalTimeMode && setMasterClock <= 0) {
+            // Time is up, so skip the next exercise and go straight to the end-of-set logic.
             return determineNextStateAfterExercise()
         }
 
-        // If time still remains, proceed to the normal exercise state.
+        // In REPS mode, OR if time remains in Total Time mode, just start the next exercise phase.
         val exerciseSec = (this.exerciseTime.toLongOrNull() ?: 0L).toInt()
         val moveToSec = (this.moveToTime.toLongOrNull() ?: 0L).toInt()
         val fullExerciseDuration = exerciseSec + moveToSec
         return TimerState.Exercising(fullExerciseDuration, fullExerciseDuration)
     }
-
         private fun determineNextStateAfterSetRest(): TimerState {
             // After a set rest, we start a new set.
             val reps = this.reps.toIntOrNull() ?: 1
