@@ -1,6 +1,6 @@
 // In file: app/src/main/java/com/billweberx/pt_timer/MainActivity.kt
 
-package com.billweberx.pt_timer
+package com.billweberx.pt_timer.ui.activity
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -10,45 +10,10 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
 import com.billweberx.pt_timer.ui.theme.PT_TimerTheme
-import androidx.annotation.Keep
-
-
-@Keep
-data class TimerSetup(
-    val name: String,
-    val config: SetupConfig, // This correctly matches the "config": {} object in your JSON
-    val startRepSoundId: Int,
-    val startRestSoundId: Int,
-    val startSetRestSoundId: Int,
-    val completeSoundId: Int
-)
-
-@Keep
-data class SetupConfig(
-    val moveToTime: String,
-    val exerciseTime: String,
-    val moveFromTime: String,
-    val restTime: String,
-    val reps: String,
-    val sets: String,
-    val setRestTime: String,
-    val totalTime: String
-)
-// Data class for the main timer screen's reactive state, moved here to be globally accessible
-data class TimerScreenState(
-    val status: String = "Ready",
-    val remainingTime: Int = 0,
-    val progressDisplay: String = "",
-    val currentSet: Int = 0,
-    val currentRep: Int = 0,
-    val activePhase: String = "Exercise"
-)
+import com.billweberx.pt_timer.TimerViewModel
+import com.billweberx.pt_timer.ui.AppNavigation
 
 class MainActivity : ComponentActivity() {
 
@@ -64,7 +29,6 @@ class MainActivity : ComponentActivity() {
         const val KEY_SETS = "sets"
         const val KEY_SET_REST_TIME = "set_rest_time"
         const val KEY_TOTAL_TIME = "total_time"
-
         const val KEY_ACTIVE_SETUP_NAME = "active_setup_name"
 
         // New keys for all the sound options
@@ -98,23 +62,4 @@ class MainActivity : ComponentActivity() {
 }
 
 
-@Composable
-fun AppNavigation(viewModel: TimerViewModel) {
-    val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = "timer") {
-        composable("timer") {
-            // Note: The parameters for PTTimerScreen will change later
-            PTTimerScreen(
-                viewModel = viewModel,
-                onGoToSettings = { navController.navigate("settings") }
-                // Setup management parameters are removed as they move to the settings screen
-            )
-        }
-        composable("settings") {
-            SetupScreen(
-                navController = navController,
-                viewModel = viewModel
-            )
-        }
-    }
-}
+

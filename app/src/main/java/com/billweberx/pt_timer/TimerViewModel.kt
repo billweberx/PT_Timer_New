@@ -13,6 +13,11 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.billweberx.pt_timer.data.SetupConfig
+import com.billweberx.pt_timer.data.TimerScreenState
+import com.billweberx.pt_timer.data.TimerSetup
+import com.billweberx.pt_timer.ui.activity.MainActivity
+import com.billweberx.pt_timer.util.AppSoundPlayer
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonSyntaxException
@@ -28,7 +33,6 @@ import java.io.File
 import kotlin.coroutines.coroutineContext
 
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
-
     private val prefs = application.getSharedPreferences("PTTimerState", Application.MODE_PRIVATE)
     private val setupsFilename = "setups.json"
     private val gson = Gson()
@@ -38,7 +42,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private val _setups = MutableStateFlow<List<TimerSetup>>(emptyList())
     val loadedSetups = _setups.asStateFlow()
     private var setMasterClock = 0L
-
     private val _timerScreenState = MutableStateFlow(TimerScreenState())
     val timerScreenState = _timerScreenState.asStateFlow()
 
@@ -51,7 +54,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var sets by mutableStateOf("1")
     var setRestTime by mutableStateOf("60")
     var totalTime by mutableStateOf("0")
-
     var soundOptions by mutableStateOf<List<SoundOption>>(emptyList())
         private set
     val defaultSound: SoundOption get() = soundOptions.firstOrNull { it.resourceId == -1 } ?: SoundOption("None", -1)
@@ -59,14 +61,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var selectedStartRestSound by mutableStateOf(defaultSound)
     var selectedStartSetRestSound by mutableStateOf(defaultSound)
     var selectedCompleteSound by mutableStateOf(defaultSound)
-
     var activeSetupName by mutableStateOf<String?>(null)
     var activeSetup by mutableStateOf<TimerSetup?>(null)
-
     var isPaused by mutableStateOf(false)
         private set
-
-    // Inside TimerViewModel class
 
     // The current state of our machine. Starts in 'Ready'.
     private var currentState: TimerState = TimerState.Ready// Holds the state right before we paused, so we can resume correctly.
@@ -88,34 +86,46 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             loadStateFromPrefs()
         }
     }
-    fun addOrUpdateSetup(setupName: String) {
-        if (setupName.isBlank()) return
 
-        // First, create the nested SetupConfig object from the ViewModel's state.
+    fun addOrUpdateSetup(
+        name: String,
+        moveToTime: String,
+        exerciseTime: String,
+        moveFromTime: String,
+        restTime: String,
+        sets: String,
+        setRestTime: String,
+        reps: String
+    ) {
+        if (name.isBlank()) return // <-- FIX: Use 'name' parameter
+
         val config = SetupConfig(
-            moveToTime = this.moveToTime,
-            exerciseTime = this.exerciseTime,
-            moveFromTime = this.moveFromTime,
-            restTime = this.restTime,
-            reps = this.reps,
-            sets = this.sets,
-            setRestTime = this.setRestTime,
-            totalTime = this.totalTime
+            moveToTime = moveToTime,
+            exerciseTime = exerciseTime,
+            moveFromTime = moveFromTime,
+            restTime = restTime,
+            reps = reps,
+            sets = sets,
+            setRestTime = setRestTime,
+            totalTime = this.totalTime // Assuming totalTime is calculated elsewhere or not passed in
         )
 
-        // Then, create the parent TimerSetup object, passing the config object in.
         val newOrUpdatedSetup = TimerSetup(
-            name = setupName,
-            config = config, // Pass the nested object here
+            name = name, // <-- FIX: Use 'name' parameter
+            config = config,
             startRepSoundId = selectedStartRepSound.resourceId,
             startRestSoundId = selectedStartRestSound.resourceId,
             startSetRestSoundId = selectedStartSetRestSound.resourceId,
             completeSoundId = selectedCompleteSound.resourceId
         )
 
-        // The rest of the function remains the same
         val currentList = _setups.value.toMutableList()
-        val existingIndex = currentList.indexOfFirst { it.name.equals(setupName, ignoreCase = true) }
+        val existingIndex = currentList.indexOfFirst {
+            it.name.equals(
+                name,
+                ignoreCase = true
+            )
+        } // <-- FIX: Use 'name' parameter
 
         if (existingIndex != -1) {
             currentList[existingIndex] = newOrUpdatedSetup
@@ -127,6 +137,31 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
+    fun moveSetupUp(setupToMove: TimerSetup) {
+        val currentList = _setups.value.toMutableList()
+        val currentIndex = currentList.indexOf(setupToMove)
+
+        // If the item is found and is not already at the top, move it up.
+        if (currentIndex > 0) {
+            val item = currentList.removeAt(currentIndex)
+            currentList.add(currentIndex - 1, item)
+            _setups.value = currentList
+            saveSetupsToFile() // Save the new order
+        }
+    }
+
+    fun moveSetupDown(setupToMove: TimerSetup) {
+        val currentList = _setups.value.toMutableList()
+        val currentIndex = currentList.indexOf(setupToMove)
+
+        // If the item is found and is not already at the bottom, move it down.
+        if (currentIndex != -1 && currentIndex < currentList.size - 1) {
+            val item = currentList.removeAt(currentIndex)
+            currentList.add(currentIndex + 1, item)
+            _setups.value = currentList
+            saveSetupsToFile() // Save the new order
+        }
+    }
     fun deleteSetup(setupName: String) {
         _setups.value = _setups.value.filter { !it.name.equals(setupName, ignoreCase = true) }
         if (activeSetupName.equals(setupName, ignoreCase = true)) {
@@ -219,7 +254,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- Timer Functions ---
-    fun startTimer(onPlaySound: (Int) -> Unit) {
+    fun startTimer() {
         if (timerJob?.isActive == true) return
         isPaused = false
         // Reset progress counters for a fresh start
@@ -236,7 +271,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
         // Launch the state machine
         timerJob = viewModelScope.launch {
-            runStateMachine(onPlaySound)
+            runStateMachine()
         }
     }
 
@@ -269,7 +304,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         _timerScreenState.update { it.copy(status = "Paused") }
     }
 
-    fun resumeTimer(onPlaySound: (Int) -> Unit) {
+    fun resumeTimer() {
         if (!isPaused || timerJob?.isActive == true) return
 
         isPaused = false
@@ -279,12 +314,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
         // Launch a new job that will pick up from the restored state
         timerJob = viewModelScope.launch {
-            runStateMachine(onPlaySound, isResuming = true)
+            runStateMachine(isResuming = true)
         }
     }
 
-    // This is the new state machine runner
-    private suspend fun runStateMachine(onPlaySound: (Int) -> Unit, isResuming: Boolean = false) {
+    // This is the state machine runner
+    private suspend fun runStateMachine(isResuming: Boolean = false) {
         var resuming = isResuming
         // The loop continues as long as we're in an active state
         while (coroutineContext.isActive && currentState !is TimerState.Finished && currentState !is TimerState.Ready && currentState !is TimerState.Paused) {
@@ -301,8 +336,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     // ONLY play sound if we are starting from the beginning of this state
                     if (state.remainingDuration == state.totalDuration && !resuming) {
-                        onPlaySound(selectedStartRepSound.resourceId)
-                    }
+                        AppSoundPlayer.playSound(getApplication(), selectedStartRepSound.resourceId)                        }
                     countdown(state.remainingDuration)
                     currentState = determineNextStateAfterExercise()
                 }
@@ -310,7 +344,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 is TimerState.Resting -> {
                     _timerScreenState.update { it.copy(status = "Rest") }
                     if (state.remainingDuration == state.totalDuration && !resuming) {
-                        onPlaySound(selectedStartRestSound.resourceId)
+                        AppSoundPlayer.playSound(getApplication(), selectedStartRestSound.resourceId)
                     }
                     countdown(state.remainingDuration)
                     currentState = determineNextStateAfterRest()
@@ -319,7 +353,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 is TimerState.SetResting -> {
                     _timerScreenState.update { it.copy(status = "Set Rest") }
                     if (state.remainingDuration == state.totalDuration && !resuming) {
-                        onPlaySound(selectedStartSetRestSound.resourceId)
+                        AppSoundPlayer.playSound(getApplication(), selectedStartSetRestSound.resourceId)
                     }
                     countdown(state.remainingDuration)
                     currentState = determineNextStateAfterSetRest()
@@ -333,12 +367,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     // If the loop finishes because the state became Finished, handle completion.
     if (currentState is TimerState.Finished) {
         _timerScreenState.update { it.copy(status = "Finished!", remainingTime = 0, progressDisplay = "") }
-        onPlaySound(selectedCompleteSound.resourceId)
+        AppSoundPlayer.playSound(getApplication(), selectedCompleteSound.resourceId)
+        delay(100)
         stopTimer()
     }
 }
-
-
     // A simple, reusable, cancellable countdown function
     private suspend fun countdown(seconds: Int) {
         val isInTotalTimeMode = setMasterClock > 0

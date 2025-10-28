@@ -1,6 +1,5 @@
-package com.billweberx.pt_timer // Make sure this line is at the very top
+package com.billweberx.pt_timer.ui.screens // Make sure this line is at the very top
 
-import android.media.MediaPlayer
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,17 +35,16 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.launch
+import com.billweberx.pt_timer.TimerViewModel
+import com.billweberx.pt_timer.pressable
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,26 +53,12 @@ fun PTTimerScreen(
     viewModel: TimerViewModel,
     onGoToSettings: () -> Unit
 ) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
 
     // State from ViewModel
     val timerState by viewModel.timerScreenState.collectAsStateWithLifecycle()
     val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
     var isSetupDropdownExpanded by remember { mutableStateOf(false) }
-    val playSound: (Int) -> Unit = { resourceId ->
-        if (resourceId != -1) {
-            coroutineScope.launch {
-                try {
-                    MediaPlayer.create(context, resourceId)?.apply {
-                        setOnCompletionListener { it.release() }
-                        start()
-                    }
-                } catch (_: Exception) { /* Handle error */
-                }
-            }
-        }
-    }
+
     // Determine if the timer has valid parameters to start
     val hasReps = (viewModel.reps.toDoubleOrNull()?.toInt() ?: 0) > 0
     val hasSets = (viewModel.sets.toDoubleOrNull()?.toInt() ?: 0) > 0
@@ -187,9 +171,9 @@ fun PTTimerScreen(
                                 viewModel.pauseTimer()
                             } else {
                                 if (viewModel.isPaused) {
-                                    viewModel.resumeTimer(playSound)
+                                    viewModel.resumeTimer()
                                 } else {
-                                    viewModel.startTimer(playSound)
+                                    viewModel.startTimer()
                                 }
                             }
                         }

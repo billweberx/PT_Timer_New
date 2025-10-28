@@ -1,9 +1,10 @@
-package com.billweberx.pt_timer
+package com.billweberx.pt_timer.ui.screens
 
 import android.net.Uri
-import android.util.Log // <-- FIX #1: ADDED MISSING IMPORT FOR LOG
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +23,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown // For the down arrow
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
@@ -31,25 +35,32 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext // <-- FIX #2: ENSURED CONTEXT IMPORT
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.billweberx.pt_timer.SoundOption
+import com.billweberx.pt_timer.TimerViewModel
+import com.billweberx.pt_timer.pressable
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,13 +70,10 @@ fun SetupScreen(
     viewModel: TimerViewModel,
 ) {
     val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
+    var isManageSetupsExpanded by remember { mutableStateOf(false) }
     var newSetupName by remember { mutableStateOf("") }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
-
-    // --- FIX #3: MOVED CONTEXT DEFINITION HERE ---
-    // This must be inside the Composable to be accessed by the launchers.
     val context = LocalContext.current
-
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
         onResult = { uri: Uri? ->
@@ -166,7 +174,99 @@ fun SetupScreen(
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            Text("Manage Setups", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        isManageSetupsExpanded = !isManageSetupsExpanded
+                    } // Toggle the state on click
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Manage Setups",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f) // Take up available space
+                )
+                // This icon will rotate based on the expanded state
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isManageSetupsExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(if (isManageSetupsExpanded) 180f else 0f) // Animate rotation
+                )
+            }
+            AnimatedVisibility(visible = isManageSetupsExpanded) {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    if (loadedSetups.isEmpty()) {
+                        Text(
+                            "No saved exercises yet.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Gray
+                        )
+                    }
+                    loadedSetups.forEachIndexed { index, setup ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // Text showing the setup name
+                            Text(
+                                text = setup.name,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { // Allow clicking the name to load it
+                                        viewModel.applySetup(setup)
+                                        newSetupName = setup.name
+                                    },
+                                style = if (viewModel.activeSetupName == setup.name) {
+                                    MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.primary)
+                                } else {
+                                    MaterialTheme.typography.bodyLarge
+                                }
+                            )
+                            // "Move Up" Button
+                            IconButton(
+                                onClick = { viewModel.moveSetupUp(setup) },
+                                enabled = index > 0 // Disable if it's the first item
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "Move Up"
+                                )
+                            }
+
+                            // "Move Down" Button
+                            IconButton(
+                                onClick = { viewModel.moveSetupDown(setup) },
+                                enabled = index < loadedSetups.size - 1 // Disable if it's the last item
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Move Down"
+                                )
+                            }
+
+                            // "Delete" Button for this specific item
+                            IconButton(onClick = {
+                                viewModel.deleteSetup(setup.name)
+                                // If the deleted setup was the one in the text field, clear it
+                                if (newSetupName == setup.name) {
+                                    newSetupName = ""
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete ${setup.name}",
+                                    tint = Color.Red
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             // --- Rows 9-10: Input Fields ---
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -229,42 +329,7 @@ fun SetupScreen(
                     Modifier.weight(1f)
                 )
             }
-            // --- Row 11: Setups Spinner ---
-            var expanded by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
-            ) {
-                OutlinedTextField(
-                    value = viewModel.activeSetupName ?: "Select a Setup",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Setups") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    // --- THE FIX IS HERE ---
-                    modifier = Modifier
-                        .menuAnchor(
-                            type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
-                            enabled = true // This menu can always be opened
-                        )
-                        .fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    loadedSetups.forEach { setup ->
-                        DropdownMenuItem(
-                            text = { Text(setup.name) },
-                            onClick = {
-                                viewModel.applySetup(setup)
-                                newSetupName = setup.name
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
+
             // --- Row 12: New Setup Name Field ---
             OutlinedTextField(
                 value = newSetupName,
@@ -286,36 +351,21 @@ fun SetupScreen(
                     color = if (saveButtonEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = if (saveButtonEnabled) MaterialTheme.colorScheme.onPrimary else Color.Gray,
                     tonalElevation = 2.dp,
-                    modifier = Modifier.pressable(
+                    modifier = Modifier.Companion.pressable(
                         interactionSource = saveInteractionSource,
                         enabled = saveButtonEnabled,
-                        onClick = { viewModel.addOrUpdateSetup(newSetupName) }
-                    )
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                    ) {
-                        Text("Save\nExercise", textAlign = TextAlign.Center)
-                    }
-                }
-
-                // --- Delete Exercise Button ---
-                val deleteInteractionSource = remember { MutableInteractionSource() }
-                val deleteButtonEnabled = viewModel.activeSetup != null
-                Surface(
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                    color = if (deleteButtonEnabled) Color(0xFFFFCDD2) else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (deleteButtonEnabled) Color.Black else Color.Gray,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.pressable(
-                        interactionSource = deleteInteractionSource,
-                        enabled = deleteButtonEnabled,
                         onClick = {
-                            viewModel.activeSetup?.name?.let {
-                                viewModel.deleteSetup(it)
-                                newSetupName = ""
-                            }
+                            // This is more robust. It uses the current ViewModel state.
+                            viewModel.addOrUpdateSetup(
+                                name = newSetupName,
+                                moveToTime = viewModel.moveToTime,
+                                exerciseTime = viewModel.exerciseTime,
+                                moveFromTime = viewModel.moveFromTime,
+                                restTime = viewModel.restTime,
+                                sets = viewModel.sets,
+                                setRestTime = viewModel.setRestTime,
+                                reps = viewModel.reps
+                            )
                         }
                     )
                 ) {
@@ -323,7 +373,7 @@ fun SetupScreen(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-                        Text("Delete\nExercise", textAlign = TextAlign.Center)
+                        Text("Save\nExercise", textAlign = TextAlign.Center)
                     }
                 }
 

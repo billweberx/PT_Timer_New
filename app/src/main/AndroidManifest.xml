@@ -16,7 +16,7 @@
         android:theme="@style/Theme.PT_Timer">  <!-- ADD THIS LINE -->
 
         <activity
-            android:name="com.billweberx.pt_timer.MainActivity"
+            android:name="com.billweberx.pt_timer.ui.activity.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
