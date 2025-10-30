@@ -272,29 +272,37 @@ fun SetupScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TimerInputField(
                     "Move To",
-                    viewModel.moveToTime,
-                    { viewModel.moveToTime = it },
+                    viewModel.configState.moveToTime,
+                    { newTextValue ->
+                        viewModel.configState = viewModel.configState.copy(moveToTime = newTextValue)
+                    },
                     true,
                     Modifier.weight(1f)
                 )
                 TimerInputField(
                     "Exercise",
-                    viewModel.exerciseTime,
-                    { viewModel.exerciseTime = it },
+                    viewModel.configState.exerciseTime,
+                    { newTextValue ->
+                        viewModel.configState = viewModel.configState.copy(exerciseTime = newTextValue)
+                    },
                     true,
                     Modifier.weight(1f)
                 )
                 TimerInputField(
                     "Move From",
-                    viewModel.moveFromTime,
-                    { viewModel.moveFromTime = it },
+                    viewModel.configState.moveFromTime,
+                    { newTextValue ->
+                        viewModel.configState = viewModel.configState.copy(moveFromTime = newTextValue)
+                    },
                     true,
                     Modifier.weight(1f)
                 )
                 TimerInputField(
                     "Rest",
-                    viewModel.restTime,
-                    { viewModel.restTime = it },
+                    viewModel.configState.restTime,
+                    { newTextValue ->
+                        viewModel.configState = viewModel.configState.copy(restTime = newTextValue)
+                    },
                     true,
                     Modifier.weight(1f)
                 )
@@ -302,29 +310,37 @@ fun SetupScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TimerInputField(
                     "Sets",
-                    viewModel.sets,
-                    { viewModel.sets = it },
+                    viewModel.configState.sets,
+                    { newTextValue ->
+                        viewModel.configState = viewModel.configState.copy(sets = newTextValue)
+                    },
                     true,
                     Modifier.weight(1f)
                 )
                 TimerInputField(
                     "Set Rest",
-                    viewModel.setRestTime,
-                    { viewModel.setRestTime = it },
+                    viewModel.configState.setRestTime,
+                    { newTextValue ->
+                        viewModel.configState = viewModel.configState.copy(setRestTime = newTextValue)
+                    },
                     true,
                     Modifier.weight(1f)
                 )
                 TimerInputField(
                     "Reps",
-                    viewModel.reps,
-                    { viewModel.reps = it },
+                    viewModel.configState.reps,
+                    { newTextValue ->
+                        viewModel.configState = viewModel.configState.copy(reps = newTextValue)
+                    },
                     true,
                     Modifier.weight(1f)
                 )
                 TimerInputField(
                     "Total Time",
-                    viewModel.totalTime,
-                    { viewModel.totalTime = it },
+                    viewModel.configState.totalTime,
+                    { newTextValue ->
+                        viewModel.configState = viewModel.configState.copy(totalTime = newTextValue)
+                    },
                     true,
                     Modifier.weight(1f)
                 )
@@ -354,19 +370,7 @@ fun SetupScreen(
                     modifier = Modifier.Companion.pressable(
                         interactionSource = saveInteractionSource,
                         enabled = saveButtonEnabled,
-                        onClick = {
-                            // This is more robust. It uses the current ViewModel state.
-                            viewModel.addOrUpdateSetup(
-                                name = newSetupName,
-                                moveToTime = viewModel.moveToTime,
-                                exerciseTime = viewModel.exerciseTime,
-                                moveFromTime = viewModel.moveFromTime,
-                                restTime = viewModel.restTime,
-                                sets = viewModel.sets,
-                                setRestTime = viewModel.setRestTime,
-                                reps = viewModel.reps
-                            )
-                        }
+                        onClick = {viewModel.addOrUpdateSetup(name = newSetupName)}
                     )
                 ) {
                     Box(
@@ -492,7 +496,6 @@ fun SoundDropdown(
             readOnly = true,
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            // --- THE FIX IS HERE ---
             modifier = Modifier
                 .menuAnchor(
                     type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,

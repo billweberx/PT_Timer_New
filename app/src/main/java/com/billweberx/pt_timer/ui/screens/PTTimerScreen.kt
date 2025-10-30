@@ -60,9 +60,9 @@ fun PTTimerScreen(
     var isSetupDropdownExpanded by remember { mutableStateOf(false) }
 
     // Determine if the timer has valid parameters to start
-    val hasReps = (viewModel.reps.toDoubleOrNull()?.toInt() ?: 0) > 0
-    val hasSets = (viewModel.sets.toDoubleOrNull()?.toInt() ?: 0) > 0
-    val hasTotalTime = (viewModel.totalTime.toDoubleOrNull()?.toInt() ?: 0) > 0
+    val hasReps = (viewModel.configState.reps.toDoubleOrNull()?.toInt() ?: 0) > 0
+    val hasSets = (viewModel.configState.sets.toDoubleOrNull()?.toInt() ?: 0) > 0
+    val hasTotalTime = (viewModel.configState.totalTime.toDoubleOrNull()?.toInt() ?: 0) > 0
 
     val isRepsModeValid = hasReps && hasSets
     val isTimeModeValid = hasTotalTime
@@ -104,11 +104,11 @@ fun PTTimerScreen(
             // --- LEFT SIDE: SETS DISPLAY (RESTORED) ---
             Text(
                 text = if (isRunning || viewModel.isPaused) {
-                    val totalSets = viewModel.sets.toIntOrNull() ?: 0
+                    val totalSets = viewModel.configState.sets.toIntOrNull() ?: 0
                     // Display sets remaining instead of a countdown
                     "Set: ${timerState.currentSet}/$totalSets"
                 } else {
-                    val totalSets = viewModel.sets.toIntOrNull() ?: 0
+                    val totalSets = viewModel.configState.sets.toIntOrNull() ?: 0
                     if (totalSets > 0) "Sets: $totalSets" else ""
                 },
                 style = MaterialTheme.typography.bodyLarge,
@@ -128,10 +128,10 @@ fun PTTimerScreen(
                 text = if (hasReps) {
                     // Reps Mode: Show the rep counter
                     if (isRunning || viewModel.isPaused) {
-                        val totalReps = viewModel.reps.toIntOrNull() ?: 0
+                        val totalReps = viewModel.configState.reps.toIntOrNull() ?: 0
                         "Rep: ${timerState.currentRep}/$totalReps"
                     } else {
-                        val totalReps = viewModel.reps.toIntOrNull() ?: 0
+                        val totalReps = viewModel.configState.reps.toIntOrNull() ?: 0
                         if (totalReps > 0) "Reps: $totalReps" else ""
                     }
                 } else {
@@ -220,26 +220,26 @@ fun PTTimerScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ReadOnlyField(label = "Move To", value = viewModel.moveToTime, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Exercise", value = viewModel.exerciseTime, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Move From", value = viewModel.moveFromTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Move To", value = viewModel.configState.moveToTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Exercise", value = viewModel.configState.exerciseTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Move From", value = viewModel.configState.moveFromTime, modifier = Modifier.weight(1f))
         }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ReadOnlyField(label = "Rest", value = viewModel.restTime, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Sets", value = viewModel.sets, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Set Rest", value = viewModel.setRestTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Rest", value = viewModel.configState.restTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Sets", value = viewModel.configState.sets, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Set Rest", value = viewModel.configState.setRestTime, modifier = Modifier.weight(1f))
         }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ReadOnlyField(label = "Reps", value = viewModel.reps, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Total Time", value = viewModel.totalTime, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Reps", value = viewModel.configState.reps, modifier = Modifier.weight(1f))
+            ReadOnlyField(label = "Total Time", value = viewModel.configState.totalTime, modifier = Modifier.weight(1f))
             Spacer(modifier = Modifier.weight(1f))
         }
         // Row 8:  the Setups dropdown
@@ -258,7 +258,6 @@ fun PTTimerScreen(
                 readOnly = true,
                 label = { Text("Setups") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isSetupDropdownExpanded) },
-                // --- THE FIX IS HERE ---
                 modifier = Modifier
                     .menuAnchor(
                         type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
@@ -266,8 +265,6 @@ fun PTTimerScreen(
                         enabled = !isRunning
                     )
                     .fillMaxWidth()
-                // The old enabled parameter on OutlinedTextField is no longer needed
-                // because the menuAnchor now controls the enabled state of the dropdown.
             )
             ExposedDropdownMenu(
                 expanded = isSetupDropdownExpanded,

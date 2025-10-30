@@ -14,12 +14,12 @@ data class TimerSetup(
 
 @Keep
 data class SetupConfig(
-    val moveToTime: String,
-    val exerciseTime: String,
-    val moveFromTime: String,
-    val restTime: String,
-    val reps: String,
-    val sets: String,
-    val setRestTime: String,
-    val totalTime: String
+    val moveToTime: String = "1",
+    val exerciseTime: String = "2",
+    val moveFromTime: String = "1",
+    val restTime: String = "2",
+    val reps: String = "10",
+    val sets: String = "2",
+    val setRestTime: String = "15",
+    val totalTime: String = "0"
 )
