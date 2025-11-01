@@ -2,6 +2,7 @@ package com.billweberx.pt_timer.ui.screens
 
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,28 +38,37 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch as coroutineLaunch
 import com.billweberx.pt_timer.SoundOption
 import com.billweberx.pt_timer.TimerViewModel
 import com.billweberx.pt_timer.pressable
@@ -74,6 +85,17 @@ fun SetupScreen(
     var newSetupName by remember { mutableStateOf("") }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val toastMessage by viewModel.toastMessage.collectAsState()
+    val exerciseTimeFocusRequester = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(toastMessage) {
+        toastMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            // Notify the ViewModel that the message has been shown to prevent it from re-appearing
+            viewModel.onToastShown()
+        }
+    }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
         onResult = { uri: Uri? ->
@@ -270,82 +292,90 @@ fun SetupScreen(
 
             // --- Rows 9-10: Input Fields ---
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Corrected "Move To" call
                 TimerInputField(
-                    "Move To",
-                    viewModel.configState.moveToTime,
-                    { newTextValue ->
-                        viewModel.configState = viewModel.configState.copy(moveToTime = newTextValue)
+                    label = "Move To",
+                    textValue = viewModel.configState.moveToTime,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(moveToTime = newTextValue))
                     },
-                    true,
-                    Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
+                )
+                TimerInputField(label = "Exercise",
+                    textValue = viewModel.configState.exerciseTime,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(exerciseTime = newTextValue))
+                    },
+                    focusRequester = exerciseTimeFocusRequester, // Link the requester
+                    modifier = Modifier
+                        .weight(1f)
+                        .onFocusChanged { focusState ->
+                            if (!focusState.isFocused) {
+                                // When we lose focus, validate.
+                                if (!viewModel.validateExerciseTime()) {
+                                    // If validation fails, launch a coroutine on the correct scope.
+                                    // This is now unambiguous and will work correctly.
+                                    scope.coroutineLaunch  {
+                                        exerciseTimeFocusRequester.requestFocus()
+                                    }
+                                }
+                            }
+                        }
+                )
+
+
+
+                TimerInputField(
+                    label = "Move From",
+                    textValue = viewModel.configState.moveFromTime,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(moveFromTime = newTextValue))
+                    },
+                    modifier = Modifier.weight(1f)
                 )
                 TimerInputField(
-                    "Exercise",
-                    viewModel.configState.exerciseTime,
-                    { newTextValue ->
-                        viewModel.configState = viewModel.configState.copy(exerciseTime = newTextValue)
+                    label = "Rest",
+                    textValue = viewModel.configState.restTime,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(restTime = newTextValue))
                     },
-                    true,
-                    Modifier.weight(1f)
-                )
-                TimerInputField(
-                    "Move From",
-                    viewModel.configState.moveFromTime,
-                    { newTextValue ->
-                        viewModel.configState = viewModel.configState.copy(moveFromTime = newTextValue)
-                    },
-                    true,
-                    Modifier.weight(1f)
-                )
-                TimerInputField(
-                    "Rest",
-                    viewModel.configState.restTime,
-                    { newTextValue ->
-                        viewModel.configState = viewModel.configState.copy(restTime = newTextValue)
-                    },
-                    true,
-                    Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TimerInputField(
-                    "Sets",
-                    viewModel.configState.sets,
-                    { newTextValue ->
-                        viewModel.configState = viewModel.configState.copy(sets = newTextValue)
+                    label = "Sets",
+                    textValue = viewModel.configState.sets,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(sets = newTextValue))
                     },
-                    true,
-                    Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 )
                 TimerInputField(
-                    "Set Rest",
-                    viewModel.configState.setRestTime,
-                    { newTextValue ->
-                        viewModel.configState = viewModel.configState.copy(setRestTime = newTextValue)
+                    label = "Set Rest",
+                    textValue = viewModel.configState.setRestTime,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(setRestTime = newTextValue))
                     },
-                    true,
-                    Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 )
                 TimerInputField(
-                    "Reps",
-                    viewModel.configState.reps,
-                    { newTextValue ->
-                        viewModel.configState = viewModel.configState.copy(reps = newTextValue)
+                    label = "Reps",
+                    textValue = viewModel.configState.reps,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(reps = newTextValue))
                     },
-                    true,
-                    Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 )
                 TimerInputField(
-                    "Total Time",
-                    viewModel.configState.totalTime,
-                    { newTextValue ->
-                        viewModel.configState = viewModel.configState.copy(totalTime = newTextValue)
+                    label = "Total Time",
+                    textValue = viewModel.configState.totalTime,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(totalTime = newTextValue))
                     },
-                    true,
-                    Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 )
             }
-
             // --- Row 12: New Setup Name Field ---
             OutlinedTextField(
                 value = newSetupName,
@@ -370,7 +400,7 @@ fun SetupScreen(
                     modifier = Modifier.Companion.pressable(
                         interactionSource = saveInteractionSource,
                         enabled = saveButtonEnabled,
-                        onClick = {viewModel.addOrUpdateSetup(name = newSetupName)}
+                        onClick = { viewModel.addOrUpdateSetup(name = newSetupName) }
                     )
                 ) {
                     Box(
@@ -524,21 +554,44 @@ fun SoundDropdown(
 @Composable
 fun TimerInputField(
     label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier
+    textValue: String,
+    onTextChange: (String) -> Unit,
+    modifier: Modifier = Modifier, // Moved to be the first optional parameter
+    onFocusChange: () -> Unit = {}, // Provide a default empty lambda
+    focusRequester: FocusRequester? = null,
+    isNumeric: Boolean = true
 ) {
+    val keyboardType = if (isNumeric) KeyboardType.Decimal else KeyboardType.Text // Corrected to KeyboardType.Decimal
+    val focusManager = LocalFocusManager.current
+
+    // This modifier chain is the core of the change ---
+    var finalModifier = modifier
+        .onFocusChanged { focusState ->
+            // If focus is lost, call the handler
+            if (!focusState.isFocused) {
+                onFocusChange()
+            }
+        }
+    if (focusRequester != null) {
+        // Chain the focusRequester if it was provided
+        finalModifier = finalModifier.focusRequester(focusRequester)
+    }
+    // ----------------------------------------------------
+
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Number,
-            imeAction = ImeAction.Next
+        value = textValue,
+        onValueChange = onTextChange,
+        modifier = finalModifier, // Use the new modifier with focus handling
+        label = { Text(label, style = MaterialTheme.typography.bodySmall) },
+        keyboardOptions = KeyboardOptions.Default.copy(
+            keyboardType = keyboardType,
+            imeAction = ImeAction.Done
         ),
+        keyboardActions = KeyboardActions(onDone = {
+            focusManager.clearFocus()
+        }),
         singleLine = true,
-        enabled = enabled,
-        modifier = modifier
+        textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
     )
 }
+

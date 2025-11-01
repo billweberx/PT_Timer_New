@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -30,6 +31,8 @@ import kotlin.coroutines.coroutineContext
 
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val _toastMessage = MutableStateFlow<String?>(null)
+    val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
     private val appStateFilename = "app_state.json"
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     private var timerJob: Job? = null
@@ -65,7 +68,30 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         initializeSounds()
         loadAppState() // Simplified initialization
     }
+    fun onToastShown() {
+        _toastMessage.value = null
+    }
+    fun onConfigChange(newConfig: SetupConfig) {    // --- Validation Logic ---
+        val exerciseTime = newConfig.exerciseTime.toDoubleOrNull() // Check as a Double
+        if (exerciseTime != null && exerciseTime <= 0.0) { // Compare to 0.0
+            // Invalid value. Post a message to the UI and reject the change.
+            _toastMessage.value = "Exercise time must be greater than 0."
+            return // Exit the function, preventing the invalid state from being set.
+        }
 
+        // --- If validation passes, update the state ---
+        configState = newConfig
+    }
+    fun validateExerciseTime(): Boolean {
+        val exerciseTimeValue = configState.exerciseTime.toDoubleOrNull()
+
+        // If the final value is null (e.g., blank, ".") or not positive...
+        if (exerciseTimeValue == null || exerciseTimeValue <= 0.0) {
+            _toastMessage.value = "Exercise time must be a positive number."
+            return false // Validation FAILED
+        }
+        return true // Validation PASSED
+    }
     private fun loadAppState() {
         val appStateFile = File(getApplication<Application>().filesDir, appStateFilename)
         if (appStateFile.exists() && appStateFile.length() > 0) {
@@ -316,19 +342,25 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             val stateToRestore = stateBeforePause
             stateBeforePause = null // Clear it immediately
 
-            if (countdownJob?.isActive != true && stateToRestore != null) {
-                currentState = when (stateToRestore) {
+            // Use the 'if' as an expression to determine the new state in one place.
+            currentState = if (countdownJob?.isActive != true && stateToRestore != null) {
+                // The countdown job is dead, so calculate the *next* state.
+                when (stateToRestore) {
                     is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
                     is TimerState.RestingInProgress -> determineNextStateAfterRest()
                     is TimerState.SetRestingInProgress -> determineNextStateAfterSetRest()
                     else -> stateToRestore // Fallback for other states
                 }
             } else {
-                // The countdown job is still active or we have nothing to restore, so normal resume is fine.
-                currentState = stateToRestore ?: return
+                // check() will throw an IllegalStateException if its condition is false.
+                check(stateToRestore != null) { "resumeTimer was called but there was no state to restore." }
+                // Because the check() passed, the compiler is now smart enough to know
+                // that stateToRestore is guaranteed not to be null from this point forward.
+                stateToRestore
             }
         }
     }
+
     private suspend fun runStateMachine(isResuming: Boolean = false) {
         var resuming = isResuming
         while (coroutineContext.isActive) {
@@ -480,29 +512,39 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val totalSets = this.configState.sets.toIntOrNull() ?: 1
         val setRestSec = (this.configState.setRestTime.toLongOrNull() ?: 0L).toInt()
 
-        if (hasReps && currentRepNumber < totalReps) {
-            currentRepNumber++
+        // --- Start of Reps or Total Time Logic ---
+        if ((hasReps && currentRepNumber < totalReps) || (!hasReps && setMasterClock > 0)) {
             val restSec = (this.configState.restTime.toLongOrNull() ?: 0L).toInt()
             val moveFromSec = (this.configState.moveFromTime.toLongOrNull() ?: 0L).toInt()
             val fullRestDuration = restSec + moveFromSec
-            return TimerState.Resting(fullRestDuration, fullRestDuration)
-        }
 
-        if (!hasReps && setMasterClock > 0) {
-            val restSec = (this.configState.restTime.toLongOrNull() ?: 0L).toInt()
-            val moveFromSec = (this.configState.moveFromTime.toLongOrNull() ?: 0L).toInt()
-            val fullRestDuration = restSec + moveFromSec
-            return TimerState.Resting(fullRestDuration, fullRestDuration)
+            // --- THIS IS THE FIX ---
+            // If the rest phase has no duration, skip it and go directly to the next exercise.
+            return if (fullRestDuration > 0) {
+                // We have reps/time left AND a valid rest duration, so enter the rest phase.
+                if (hasReps) currentRepNumber++
+                TimerState.Resting(fullRestDuration, fullRestDuration)
+            } else {
+                // We have reps/time left BUT NO rest duration. Skip rest.
+                // Increment the rep counter here before starting the next exercise.
+                if (hasReps) currentRepNumber++
+                determineNextStateAfterRest() // This will return the next Exercising state.
+            }
+            // --- END OF FIX ---
         }
+        // --- End of Reps or Total Time Logic ---
 
+
+        // If we are out of total time or out of reps, check if there are more sets.
         if (currentSetNumber < totalSets) {
             currentRepNumber = 1
             currentSetNumber++
             return TimerState.SetResting(setRestSec, setRestSec)
         } else {
-            return TimerState.Finished
+            return TimerState.Finished  // no more sets
         }
     }
+
 
     private fun determineNextStateAfterRest(): TimerState {
         val totalReps = this.configState.reps.toIntOrNull() ?: 1
