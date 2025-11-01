@@ -41,8 +41,8 @@ class MainActivity : ComponentActivity() {
         // If the timer is NOT paused, it means it was running (or stopped).
         // For the user's workflow, we assume if they leave the app, a non-paused timer
         // is a running timer they want to resume later. This is a safe assumption.
-        wasRunningOnPause = !viewModel.isPaused
-
+        val isCurrentlyPaused = viewModel.timerScreenState.value.isPaused
+        wasRunningOnPause = !isCurrentlyPaused
         // If it was considered running, explicitly pause it.
         if (wasRunningOnPause) {
             viewModel.pauseTimer() // This will set isPaused = true

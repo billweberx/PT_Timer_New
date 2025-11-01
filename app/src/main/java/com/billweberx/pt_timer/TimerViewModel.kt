@@ -54,8 +54,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var selectedCompleteSound by mutableStateOf(defaultSound)
     var activeSetupName by mutableStateOf<String?>("")
     var activeSetup by mutableStateOf<TimerSetup?>(null)
-    var isPaused by mutableStateOf(false)
-        private set
 
     // Timer State Machine properties
     private var currentState: TimerState = TimerState.Ready
@@ -274,7 +272,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startTimer() {
         if (timerJob?.isActive == true) return
-        isPaused = false
+        _timerScreenState.update { it.copy(isPaused = false) }
         currentRepNumber = 1
         currentSetNumber = 1
 
@@ -290,12 +288,14 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopTimer() {
+        countdownJob?.cancel() // <-- ADD THIS to instantly stop the countdown
         timerJob?.cancel()
+        countdownJob = null    // <-- ADD THIS for cleanup
         timerJob = null
-        isPaused = false
         currentState = TimerState.Ready
-        _timerScreenState.update { TimerScreenState() }
+        _timerScreenState.update { TimerScreenState(isPaused = false) }
     }
+
 
     fun pauseTimer() {
         val state = currentState
@@ -303,15 +303,30 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         if (countdownJob?.isActive == true && (state is TimerState.ExercisingInProgress || state is TimerState.RestingInProgress || state is TimerState.SetRestingInProgress)) {
             stateBeforePause = state // Save our current "in progress" state
             currentState = TimerState.Paused
-            _timerScreenState.update { it.copy(status = "Paused") }
+            _timerScreenState.update { it.copy(status = "Paused", isPaused = true) }
         }
     }
 
     fun resumeTimer() {
-        if (currentState is TimerState.Paused) {
-            // Restore the state to what it was before pausing. The loops will just continue.
-            currentState = stateBeforePause ?: return
-            stateBeforePause = null
+        if (timerScreenState.value.isPaused) { // Check the state from the flow
+            // If we're resuming, we're definitely not paused anymore. Update UI immediately.
+            _timerScreenState.update { it.copy(isPaused = false) }
+
+            // This is the state we are trying to restore.
+            val stateToRestore = stateBeforePause
+            stateBeforePause = null // Clear it immediately
+
+            if (countdownJob?.isActive != true && stateToRestore != null) {
+                currentState = when (stateToRestore) {
+                    is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
+                    is TimerState.RestingInProgress -> determineNextStateAfterRest()
+                    is TimerState.SetRestingInProgress -> determineNextStateAfterSetRest()
+                    else -> stateToRestore // Fallback for other states
+                }
+            } else {
+                // The countdown job is still active or we have nothing to restore, so normal resume is fine.
+                currentState = stateToRestore ?: return
+            }
         }
     }
     private suspend fun runStateMachine(isResuming: Boolean = false) {
@@ -323,7 +338,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             status = "Exercise!",
                             currentRep = currentRepNumber,
-                            currentSet = currentSetNumber
+                            currentSet = currentSetNumber,
+                            isPaused = false
                         )
                     }
                     if (state.remainingDuration == state.totalDuration && !resuming) {
@@ -334,7 +350,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     currentState = TimerState.ExercisingInProgress
                 }
                 is TimerState.Resting -> {
-                    _timerScreenState.update { it.copy(status = "Rest") }
+                    _timerScreenState.update {
+                        it.copy(
+                            status = "Rest",
+                            isPaused = false
+                        )
+                    }
                     if (state.remainingDuration == state.totalDuration && !resuming) {
                         AppSoundPlayer.playSound(getApplication(), selectedStartRestSound.resourceId)
                     }
@@ -342,7 +363,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     currentState = TimerState.RestingInProgress
                 }
                 is TimerState.SetResting -> {
-                    _timerScreenState.update { it.copy(status = "Set Rest") }
+                    _timerScreenState.update {
+                        it.copy(
+                            status = "Set Rest",
+                            isPaused = false
+                        )
+                    }
                     if (state.remainingDuration == state.totalDuration && !resuming) {
                         AppSoundPlayer.playSound(
                             getApplication(),
@@ -385,14 +411,18 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun countdown(seconds: Int) {
         var remaining = seconds
         try {
-            while (remaining > 0) {                // Cooperative pause loop
+            while (remaining > 0) {
+                // This is the cooperative pause loop. While the main state is Paused,
+                // this coroutine will wait here without consuming CPU.
                 while (currentState is TimerState.Paused) {
-                    coroutineContext.ensureActive() // Allow cancellation even while paused
-                    delay(100) // Wait patiently without consuming CPU
+                    coroutineContext.ensureActive() // Allow cancellation by stopTimer()
+                    delay(100) // Wait patiently
                 }
-                coroutineContext.ensureActive() // Main cancellation check
 
-                // Update UI
+                // If not paused, ensure we can still be cancelled before doing work.
+                coroutineContext.ensureActive()
+
+                // Update the UI with the current time remaining.
                 val isInTotalTimeMode = setMasterClock > 0
                 if (isInTotalTimeMode) {
                     setMasterClock--
@@ -406,28 +436,35 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     _timerScreenState.update { it.copy(remainingTime = remaining, progressDisplay = "") }
                 }
 
+                // Wait for one second.
                 delay(1000)
                 remaining--
 
+                // If in total time mode, check if the master clock has run out.
                 if (isInTotalTimeMode && setMasterClock <= 0) {
-                    break // Master clock ran out, end the countdown early
+                    break // Exit the loop early if the total time is up.
                 }
             }
 
-            // SUCCESS: Countdown finished normally (or was broken out of).
-            // Only transition state if we were not cancelled.
+            // SUCCESS: The countdown finished (either by reaching 0 or by the master clock running out).
+            // We must check if the coroutine is still active before changing the state.
             if (coroutineContext.isActive) {
-                currentState = when (currentState) {
-                    is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
-                    is TimerState.RestingInProgress -> determineNextStateAfterRest()
-                    is TimerState.SetRestingInProgress -> determineNextStateAfterSetRest()
-                    else -> currentState // Should not happen, but safe
+                // This check prevents a state change if the user paused at the exact last second.
+                if (currentState !is TimerState.Paused) {
+                    currentState = when (currentState) {
+                        is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
+                        is TimerState.RestingInProgress -> determineNextStateAfterRest()
+                        is TimerState.SetRestingInProgress -> determineNextStateAfterSetRest()
+                        else -> currentState // Should not happen, but a safe fallback.
+                    }
                 }
             }
         } catch (_: CancellationException) {
-            // This countdown was cancelled by stopTimer(). Do nothing.
+            // This block is entered when countdownJob is cancelled by stopTimer().
+            // We do nothing, as this is expected behavior for stopping.
         }
     }
+
 
 
     private fun determineInitialState(): TimerState {

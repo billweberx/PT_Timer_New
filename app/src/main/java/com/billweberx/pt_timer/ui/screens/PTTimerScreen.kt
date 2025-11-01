@@ -103,7 +103,7 @@ fun PTTimerScreen(
         ) {
             // --- LEFT SIDE: SETS DISPLAY (RESTORED) ---
             Text(
-                text = if (isRunning || viewModel.isPaused) {
+                text = if (isRunning || timerState.isPaused) {
                     val totalSets = viewModel.configState.sets.toIntOrNull() ?: 0
                     // Display sets remaining instead of a countdown
                     "Set: ${timerState.currentSet}/$totalSets"
@@ -127,7 +127,7 @@ fun PTTimerScreen(
             Text(
                 text = if (hasReps) {
                     // Reps Mode: Show the rep counter
-                    if (isRunning || viewModel.isPaused) {
+                    if (isRunning || timerState.isPaused) {
                         val totalReps = viewModel.configState.reps.toIntOrNull() ?: 0
                         "Rep: ${timerState.currentRep}/$totalReps"
                     } else {
@@ -150,12 +150,12 @@ fun PTTimerScreen(
         ) {
             //  Start/Pause Button
             val startInteractionSource = remember { MutableInteractionSource() }
-            val isStartButtonEnabled = isStartEnabled || isRunning || viewModel.isPaused
+            val isStartButtonEnabled = isStartEnabled || isRunning || timerState.isPaused
             Surface(
                 shape = CircleShape,
                 // The color now also reflects the enabled state
                 color = if (isStartButtonEnabled) {
-                    if (isRunning && !viewModel.isPaused) Color(0xFFFFF9C4) else Color(0xFFC8E6C9)
+                    if (isRunning && !timerState.isPaused) Color(0xFFFFF9C4) else Color(0xFFC8E6C9)
                 } else {
                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) // A disabled look
                 },
@@ -167,10 +167,10 @@ fun PTTimerScreen(
                         enabled = isStartButtonEnabled, // <-- Pass the enabled state here
                         onClick = {
                             // No if-check needed here anymore!
-                            if (isRunning && !viewModel.isPaused) {
+                            if (isRunning && !timerState.isPaused) {
                                 viewModel.pauseTimer()
                             } else {
-                                if (viewModel.isPaused) {
+                                if (timerState.isPaused) {
                                     viewModel.resumeTimer()
                                 } else {
                                     viewModel.startTimer()
@@ -180,17 +180,17 @@ fun PTTimerScreen(
                     )
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    if (isRunning && !viewModel.isPaused) {
+                    if (isRunning && !timerState.isPaused) {
                         Icon(Icons.Default.Pause, contentDescription = "Pause")
                     } else {
-                        Icon(Icons.Default.PlayArrow, contentDescription = if (viewModel.isPaused) "Resume" else "Start")
+                        Icon(Icons.Default.PlayArrow, contentDescription = if (timerState.isPaused) "Resume" else "Start")
                     }
                 }
             }
 
             //  Stop Button
             val stopInteractionSource = remember { MutableInteractionSource() }
-            val isStopButtonEnabled = isRunning || viewModel.isPaused
+            val isStopButtonEnabled = isRunning || timerState.isPaused
             Surface(
                 shape = CircleShape,
                 // The color now also reflects the enabled state

@@ -7,5 +7,6 @@ data class TimerScreenState(
     val progressDisplay: String = "",
     val currentSet: Int = 0,
     val currentRep: Int = 0,
-    val activePhase: String = "Exercise"
+    val activePhase: String = "Exercise",
+    val isPaused: Boolean = false
 )
