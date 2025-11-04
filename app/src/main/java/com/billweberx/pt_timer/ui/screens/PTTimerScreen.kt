@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.util.Locale
 import com.billweberx.pt_timer.TimerViewModel
 import com.billweberx.pt_timer.pressable
 
@@ -127,11 +128,14 @@ fun PTTimerScreen(
                 modifier = Modifier.weight(1f)
             )
 
-            // --- CENTER: MAIN COUNTDOWN TIMER (UNCHANGED) ---
+// --- CENTER: MAIN COUNTDOWN TIMER (FIXED) ---
             Text(
-                text = timerState.remainingTime.toString(),
+                text = formatTime(timerState.remainingTime),
                 style = MaterialTheme.typography.displayLarge,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                // Center the text within its available space
+                modifier = Modifier.weight(1.5f), // Give it more space than the side texts
+                textAlign = TextAlign.Center
             )
 
             // --- RIGHT SIDE: REPS OR TIME DISPLAY (CORRECT LOGIC) ---
@@ -470,3 +474,24 @@ fun ReadOnlyField(label: String, value: String, modifier: Modifier = Modifier) {
         singleLine = true
     )
 }
+// In PTTimerScreen.kt
+
+// ... (end of your PTTimerScreen composable function)
+// } // This brace closes the PTTimerScreen function
+
+// --- ADD THIS NEW FUNCTION HERE ---
+private fun formatTime(millis: Long): String {    if (millis <= 0) return "0.0"
+    val totalSeconds = millis / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+
+    // For times under a minute, show seconds and tenths of a second
+    return if (totalSeconds < 60) {
+        val tenths = (millis % 1000) / 100
+        String.format(Locale.US,"%d.%d", seconds, tenths)
+    } else {
+        // For times a minute or over, show MM:SS
+        String.format(Locale.US,"%02d:%02d", minutes, seconds)
+    }
+}
+

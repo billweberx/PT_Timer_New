@@ -401,14 +401,19 @@ fun SetupScreen(
                     label = "Move To",
                     textValue = viewModel.configState.moveToTime,
                     onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(moveToTime = newTextValue))
+                        // This regex allows for a valid decimal number (e.g., "30", "30.5", "30.")
+                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                            viewModel.onConfigChange(viewModel.configState.copy(moveToTime = newTextValue))
+                        }
                     },
                     modifier = Modifier.weight(1f)
                 )
                 TimerInputField(label = "Exercise",
                     textValue = viewModel.configState.exerciseTime,
                     onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(exerciseTime = newTextValue))
+                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                            viewModel.onConfigChange(viewModel.configState.copy(exerciseTime = newTextValue))
+                        }
                     },
                     focusRequester = exerciseTimeFocusRequester, // Link the requester
                     modifier = Modifier
@@ -433,7 +438,9 @@ fun SetupScreen(
                     label = "Move From",
                     textValue = viewModel.configState.moveFromTime,
                     onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(moveFromTime = newTextValue))
+                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                            viewModel.onConfigChange(viewModel.configState.copy(moveFromTime = newTextValue))
+                        }
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -441,7 +448,9 @@ fun SetupScreen(
                     label = "Rest",
                     textValue = viewModel.configState.restTime,
                     onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(restTime = newTextValue))
+                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                            viewModel.onConfigChange(viewModel.configState.copy(restTime = newTextValue))
+                        }
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -460,7 +469,9 @@ fun SetupScreen(
                     label = "Set Rest",
                     textValue = viewModel.configState.setRestTime,
                     onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(setRestTime = newTextValue))
+                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                            viewModel.onConfigChange(viewModel.configState.copy(setRestTime = newTextValue))
+                        }
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -476,7 +487,9 @@ fun SetupScreen(
                     label = "Total Time",
                     textValue = viewModel.configState.totalTime,
                     onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(totalTime = newTextValue))
+                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                            viewModel.onConfigChange(viewModel.configState.copy(totalTime = newTextValue))
+                        }
                     },
                     modifier = Modifier.weight(1f)
                 )

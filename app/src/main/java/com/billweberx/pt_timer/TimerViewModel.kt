@@ -565,135 +565,98 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun countdown(seconds: Int) {
-        var remaining = seconds
+    // In TimerViewModel.kt
+
+    private suspend fun countdown(durationMillis: Long) {
+        var remainingMillis = durationMillis
         try {
-            while (remaining > 0) {
-                // This is the cooperative pause loop. While the main state is Paused,
-                // this coroutine will wait here without consuming CPU.
+            while (remainingMillis > 0) {
+                // This is the cooperative pause loop.
                 while (currentState is TimerState.Paused) {
-                    coroutineContext.ensureActive() // Allow cancellation by stopTimer()
-                    delay(100) // Wait patiently
+                    coroutineContext.ensureActive() // Allow cancellation
+                    delay(50) // Wait patiently
                 }
 
-                // If not paused, ensure we can still be cancelled before doing work.
                 coroutineContext.ensureActive()
 
-                // Update the UI with the current time remaining.
-                val isInTotalTimeMode = setMasterClock > 0
-                if (isInTotalTimeMode) {
-                    setMasterClock--
-                    _timerScreenState.update {
-                        it.copy(
-                            remainingTime = remaining,
-                            progressDisplay = "Time: $setMasterClock sec"
-                        )
-                    }
-                } else {
-                    _timerScreenState.update { it.copy(remainingTime = remaining, progressDisplay = "") }
+                _timerScreenState.update {
+                    it.copy(
+                        // remainingTime is now in Millis, formatTime will handle display
+                        remainingTime = remainingMillis,
+                        progressDisplay = "" // We can simplify or adjust this as needed
+                    )
                 }
 
-                // Wait for one second.
-                delay(1000)
-                remaining--
-
-                // If in total time mode, check if the master clock has run out.
-                if (isInTotalTimeMode && setMasterClock <= 0) {
-                    break // Exit the loop early if the total time is up.
-                }
+                // Wait for a short interval. 100ms is a good balance for UI updates.
+                val delayTime = minOf(100L, remainingMillis)
+                delay(delayTime)
+                remainingMillis -= delayTime
             }
 
-            // SUCCESS: The countdown finished (either by reaching 0 or by the master clock running out).
-            // We must check if the coroutine is still active before changing the state.
-            if (coroutineContext.isActive) {
-                // This check prevents a state change if the user paused at the exact last second.
-                if (currentState !is TimerState.Paused) {
-                    currentState = when (currentState) {
-                        is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
-                        is TimerState.RestingInProgress -> determineNextStateAfterRest()
-                        is TimerState.SetRestingInProgress -> determineNextStateAfterSetRest()
-                        else -> currentState // Should not happen, but a safe fallback.
-                    }
+            // SUCCESS: The countdown finished.
+            if (coroutineContext.isActive && currentState !is TimerState.Paused) {
+                currentState = when (currentState) {
+                    is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
+                    is TimerState.RestingInProgress -> determineNextStateAfterRest()
+                    is TimerState.SetRestingInProgress -> determineNextStateAfterSetRest()
+                    else -> currentState
                 }
             }
         } catch (_: CancellationException) {
-            // This block is entered when countdownJob is cancelled by stopTimer().
-            // We do nothing, as this is expected behavior for stopping.
+            // Countdown was cancelled, which is expected on stop.
         }
     }
 
-
+// In TimerViewModel.kt
 
     private fun determineInitialState(): TimerState {
-        val exerciseSec = (this.configState.exerciseTime.toLongOrNull() ?: 0L).toInt()
-        val moveToSec = (this.configState.moveToTime.toLongOrNull() ?: 0L).toInt()
-        val fullExerciseDuration = exerciseSec + moveToSec
-        return TimerState.Exercising(fullExerciseDuration, fullExerciseDuration)
+        val exerciseSec = this.configState.exerciseTime.toDoubleOrNull() ?: 0.0
+        val moveToSec = this.configState.moveToTime.toDoubleOrNull() ?: 0.0
+        val fullExerciseDurationMillis = ((exerciseSec + moveToSec) * 1000).toLong()
+        return TimerState.Exercising(fullExerciseDurationMillis, fullExerciseDurationMillis)
     }
 
     private fun determineNextStateAfterExercise(): TimerState {
         val totalReps = this.configState.reps.toIntOrNull() ?: 1
-        val hasReps = totalReps > 0
         val totalSets = this.configState.sets.toIntOrNull() ?: 1
-        val setRestSec = (this.configState.setRestTime.toLongOrNull() ?: 0L).toInt()
+        val setRestSec = this.configState.setRestTime.toDoubleOrNull() ?: 0.0
+        val setRestMillis = (setRestSec * 1000).toLong()
 
-        // --- Start of Reps or Total Time Logic ---
-        if ((hasReps && currentRepNumber < totalReps) || (!hasReps && setMasterClock > 0)) {
-            val restSec = (this.configState.restTime.toLongOrNull() ?: 0L).toInt()
-            val moveFromSec = (this.configState.moveFromTime.toLongOrNull() ?: 0L).toInt()
-            val fullRestDuration = restSec + moveFromSec
+        if (currentRepNumber < totalReps) {
+            val restSec = this.configState.restTime.toDoubleOrNull() ?: 0.0
+            val moveFromSec = this.configState.moveFromTime.toDoubleOrNull() ?: 0.0
+            val fullRestDurationMillis = ((restSec + moveFromSec) * 1000).toLong()
 
-            // --- THIS IS THE FIX ---
-            // If the rest phase has no duration, skip it and go directly to the next exercise.
-            return if (fullRestDuration > 0) {
-                // We have reps/time left AND a valid rest duration, so enter the rest phase.
-                if (hasReps) currentRepNumber++
-                TimerState.Resting(fullRestDuration, fullRestDuration)
+            return if (fullRestDurationMillis > 0) {
+                currentRepNumber++
+                TimerState.Resting(fullRestDurationMillis, fullRestDurationMillis)
             } else {
-                // We have reps/time left BUT NO rest duration. Skip rest.
-                // Increment the rep counter here before starting the next exercise.
-                if (hasReps) currentRepNumber++
-                determineNextStateAfterRest() // This will return the next Exercising state.
+                currentRepNumber++
+                determineNextStateAfterRest()
             }
-            // --- END OF FIX ---
         }
-        // --- End of Reps or Total Time Logic ---
 
-
-        // If we are out of total time or out of reps, check if there are more sets.
         if (currentSetNumber < totalSets) {
             currentRepNumber = 1
             currentSetNumber++
-            return TimerState.SetResting(setRestSec, setRestSec)
+            return TimerState.SetResting(setRestMillis, setRestMillis)
         } else {
-            return TimerState.Finished  // no more sets
+            return TimerState.Finished
         }
     }
 
-
     private fun determineNextStateAfterRest(): TimerState {
-        val totalReps = this.configState.reps.toIntOrNull() ?: 1
-        val isInTotalTimeMode = totalReps <= 0
-
-        if (isInTotalTimeMode && setMasterClock <= 0) {
-            return determineNextStateAfterExercise()
-        }
-
-        val exerciseSec = (this.configState.exerciseTime.toLongOrNull() ?: 0L).toInt()
-        val moveToSec = (this.configState.moveToTime.toLongOrNull() ?: 0L).toInt()
-        val fullExerciseDuration = exerciseSec + moveToSec
-        return TimerState.Exercising(fullExerciseDuration, fullExerciseDuration)
+        val exerciseSec = this.configState.exerciseTime.toDoubleOrNull() ?: 0.0
+        val moveToSec = this.configState.moveToTime.toDoubleOrNull() ?: 0.0
+        val fullExerciseDurationMillis = ((exerciseSec + moveToSec) * 1000).toLong()
+        return TimerState.Exercising(fullExerciseDurationMillis, fullExerciseDurationMillis)
     }
 
     private fun determineNextStateAfterSetRest(): TimerState {
-        val reps = this.configState.reps.toIntOrNull() ?: 1
-        val totalTime = this.configState.totalTime.toLongOrNull() ?: 0L
-        setMasterClock = if (reps <= 0 && totalTime > 0) totalTime else 0
-
-        val exerciseSec = (this.configState.exerciseTime.toLongOrNull() ?: 0L).toInt()
-        val moveToSec = (this.configState.moveToTime.toLongOrNull() ?: 0L).toInt()
-        val fullExerciseDuration = exerciseSec + moveToSec
-        return TimerState.Exercising(fullExerciseDuration, fullExerciseDuration)
+        val exerciseSec = this.configState.exerciseTime.toDoubleOrNull() ?: 0.0
+        val moveToSec = this.configState.moveToTime.toDoubleOrNull() ?: 0.0
+        val fullExerciseDurationMillis = ((exerciseSec + moveToSec) * 1000).toLong()
+        return TimerState.Exercising(fullExerciseDurationMillis, fullExerciseDurationMillis)
     }
 
     // --- Sound Initialization ---
@@ -737,9 +700,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     sealed class TimerState {
         // States that INITIATE a countdown
-        data class Exercising(val totalDuration: Int, val remainingDuration: Int) : TimerState()
-        data class Resting(val totalDuration: Int, val remainingDuration: Int) : TimerState()
-        data class SetResting(val totalDuration: Int, val remainingDuration: Int) : TimerState()
+        data class Exercising(val totalDuration: Long, val remainingDuration: Long) : TimerState()
+        data class Resting(val totalDuration: Long, val remainingDuration: Long) : TimerState()
+        data class SetResting(val totalDuration: Long, val remainingDuration: Long) : TimerState()
 
         // States that REPRESENT an ONGOING countdown
         data object ExercisingInProgress : TimerState()
