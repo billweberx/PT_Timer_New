@@ -1,11 +1,15 @@
 package com.billweberx.pt_timer.ui.screens // Make sure this line is at the very top
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -38,7 +43,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -58,6 +66,9 @@ fun PTTimerScreen(
     val timerState by viewModel.timerScreenState.collectAsStateWithLifecycle()
     val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
     var isSetupDropdownExpanded by remember { mutableStateOf(false) }
+    var instructionsExpanded by remember { mutableStateOf(false) }
+    var timerConfigExpanded by remember { mutableStateOf(false) }
+
 
     // Determine if the timer has valid parameters to start
     val hasReps = (viewModel.configState.reps.toDoubleOrNull()?.toInt() ?: 0) > 0
@@ -211,37 +222,57 @@ fun PTTimerScreen(
                     Icon(Icons.Default.Stop, contentDescription = "Stop")
                 }
             }
-
-
         }
-        // Rows 5 - 7: Timer Configuration
-
+        // --- Row 5: Display Selected Color and Weight ---
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp), // Add some space around it
+            horizontalArrangement = Arrangement.SpaceAround
         ) {
-            ReadOnlyField(label = "Move To", value = viewModel.configState.moveToTime, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Exercise", value = viewModel.configState.exerciseTime, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Move From", value = viewModel.configState.moveFromTime, modifier = Modifier.weight(1f))
+            // Display Band Color if it's not "N/A"
+            if (viewModel.selectedBandColor.value != "N/A") {
+                Text(
+                    text = "Band: ${viewModel.selectedBandColor.value}",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+
+            // Display Weight if it's not "N/A"
+            if (viewModel.selectedWeight.value != "N/A") {
+                Text(
+                    text = "Weight: ${viewModel.selectedWeight.value} lbs",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+        }
+// --- Row 6: Display Frequency ---
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp), // Space below this new row
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            val timesPerDay = viewModel.configState.timesPerDay
+            val timesPerWeek = viewModel.configState.timesPerWeek
+
+            // Display Times/Day if it has a meaningful value
+            if (timesPerDay.isNotBlank() && timesPerDay != "0") {
+                Text(
+                    text = "Times/Day: $timesPerDay",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+
+            // Display Times/Wk if it has a meaningful value
+            if (timesPerWeek.isNotBlank() && timesPerWeek != "0") {
+                Text(
+                    text = "Times/Wk: $timesPerWeek",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ReadOnlyField(label = "Rest", value = viewModel.configState.restTime, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Sets", value = viewModel.configState.sets, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Set Rest", value = viewModel.configState.setRestTime, modifier = Modifier.weight(1f))
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ReadOnlyField(label = "Reps", value = viewModel.configState.reps, modifier = Modifier.weight(1f))
-            ReadOnlyField(label = "Total Time", value = viewModel.configState.totalTime, modifier = Modifier.weight(1f))
-            Spacer(modifier = Modifier.weight(1f))
-        }
         // Row 8:  the Setups dropdown
         ExposedDropdownMenuBox(
             expanded = isSetupDropdownExpanded,
@@ -284,12 +315,146 @@ fun PTTimerScreen(
             }
         }
 
-    }
+        // Rows 5 - 7: Timer Configuration
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    timerConfigExpanded = !timerConfigExpanded
+                } // Toggle the state on click
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Timer Configuration",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f) // Take up available space
+            )
+            // This icon will rotate based on the expanded state
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = if (timerConfigExpanded) "Collapse" else "Expand",
+                modifier = Modifier.rotate(if (timerConfigExpanded) 180f else 0f) // Animate rotation
+            )
+        }
+        // 2. The animated text field
+        AnimatedVisibility(visible = timerConfigExpanded) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ReadOnlyField(
+                        label = "Move To",
+                        value = viewModel.configState.moveToTime,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReadOnlyField(
+                        label = "Exercise",
+                        value = viewModel.configState.exerciseTime,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReadOnlyField(
+                        label = "Move From",
+                        value = viewModel.configState.moveFromTime,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ReadOnlyField(
+                        label = "Rest",
+                        value = viewModel.configState.restTime,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReadOnlyField(
+                        label = "Sets",
+                        value = viewModel.configState.sets,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReadOnlyField(
+                        label = "Set Rest",
+                        value = viewModel.configState.setRestTime,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ReadOnlyField(
+                        label = "Reps",
+                        value = viewModel.configState.reps,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReadOnlyField(
+                        label = "Total Time",
+                        value = viewModel.configState.totalTime,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+
+            }
+        }
+
+        // --- Row 9: Instructions ---
+        if (viewModel.configState.instructions.isNotBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        instructionsExpanded = !instructionsExpanded
+                    } // Toggle the state on click
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Exercise Instructions",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f) // Take up available space
+                )
+                // This icon will rotate based on the expanded state
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (instructionsExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(if (instructionsExpanded) 180f else 0f) // Animate rotation
+                )
+            }
+            // 2. The animated text field
+            AnimatedVisibility(visible = instructionsExpanded) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+                    // --- Display the bundled image if the ID is valid ---
+                    if (viewModel.configState.imageResId != 0) {
+                        Image(
+                            painter = painterResource(id = viewModel.configState.imageResId), // <-- Use painterResource
+                            contentDescription = "Exercise Image",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .padding(bottom = 8.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                    OutlinedTextField(
+                        value = viewModel.configState.instructions,
+                        onValueChange = {}, // Empty lambda makes it read-only
+                        readOnly = true,
+                        label = { Text("Instructions") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp) // Padding at the bottom
+                    )
+                }
+            }
+        }
+    }  // <-- This is the closing brace of the main Column
 }
-
-
-
-
 
 
 // Helper composable for the read-only display fields

@@ -25,9 +25,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.coroutineContext
+import java.io.File
+import java.lang.reflect.Field
+import com.billweberx.pt_timer.data.ImageOption
+import com.billweberx.pt_timer.data.SpinnerOption
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -44,6 +50,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private var setMasterClock = 0L
     private val _timerScreenState = MutableStateFlow(TimerScreenState())
     val timerScreenState = _timerScreenState.asStateFlow()
+    var imageOptions by mutableStateOf<List<ImageOption>>(emptyList())
+        private set
+    var selectedImage by mutableStateOf<ImageOption?>(null)
+    val defaultImage: ImageOption
+        get() = imageOptions.firstOrNull { it.resourceId == 0 } ?: ImageOption("None", 0)
 
     // --- UI Properties ---
     var configState by mutableStateOf(SetupConfig())
@@ -64,8 +75,18 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private var currentRepNumber = 1
     private var currentSetNumber = 1
 
+    // band color and weights properties
+    var bandColorOptions by mutableStateOf<List<SpinnerOption>>(emptyList())
+        private set
+    var selectedBandColor by mutableStateOf(SpinnerOption("N/A"))
+    var weightOptions by mutableStateOf<List<SpinnerOption>>(emptyList())
+        private set
+    var selectedWeight by mutableStateOf(SpinnerOption("N/A"))
+
+    val defaultOption = SpinnerOption("N/A")
     init {
         initializeSounds()
+        initializeImages()
         loadAppState() // Simplified initialization
     }
     fun onToastShown() {
@@ -92,36 +113,68 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
         return true // Validation PASSED
     }
+// In TimerViewModel.kt
+
+    // In TimerViewModel.kt
+
+    // In TimerViewModel.kt
+
     private fun loadAppState() {
-        val appStateFile = File(getApplication<Application>().filesDir, appStateFilename)
-        if (appStateFile.exists() && appStateFile.length() > 0) {
+        viewModelScope.launch(Dispatchers.IO) { // Continue to do file I/O on a background thread
+            val stateFile = File(getApplication<Application>().filesDir, appStateFilename)
+            if (!stateFile.exists()) {            // If file doesn't exist, switch to main thread to set up initial UI state
+                withContext(Dispatchers.Main) {
+                    handleFirstLaunchOrEmptyState()
+                }
+                return@launch
+            }
+
             try {
-                val json = appStateFile.readText()
+                val json = stateFile.readText()
                 val appState = gson.fromJson(json, AppState::class.java)
 
-                if (appState != null && appState.allSetups.isNotEmpty()) {
+                // --- START of the FIX ---
+                // Switch to the Main thread before updating the UI state
+                withContext(Dispatchers.Main) {
+                    // 1. Load the option lists FIRST.
+                    bandColorOptions = appState.bandColorOptions.ifEmpty { listOf(defaultOption) }
+                    weightOptions = appState.weightOptions.ifEmpty { listOf(defaultOption) }
+
+                    // 2. Load all the setups.
                     _setups.value = appState.allSetups
-                    val setupToApply =
-                        appState.allSetups.find { it.name == appState.activeSetupName }
-                            ?: appState.allSetups.first() // Default to first if name not found
-                    applySetup(setupToApply, isInitialLoad = true)
-                } else {
-                    handleFirstLaunchOrEmptyState(shouldSave = false) // Don't save if file was just empty
+
+                    // 3. NOW, find and apply the active setup. Because we are on the Main thread,
+                    //    the UI will recompose reliably.
+                    if (appState.allSetups.isEmpty()) {
+                        handleFirstLaunchOrEmptyState()
+                    } else {
+                        val activeSetup = appState.allSetups.find { it.name == appState.activeSetupName }
+                            ?: appState.allSetups.first()
+                        // The 'isInitialLoad' flag prevents a re-save, which is correct.
+                        applySetup(activeSetup, isInitialLoad = true)
+                    }
                 }
+                // --- END of the FIX ---
+
             } catch (e: Exception) {
-                Log.e("LoadAppState", "Failed to parse app_state.json", e)
-                handleFirstLaunchOrEmptyState()
+                Log.e("LoadAppState", "Exception while reading/parsing app_state.json.", e)
+                withContext(Dispatchers.Main) {
+                    handleFirstLaunchOrEmptyState(shouldSave = false)
+                }
             }
-        } else {
-            handleFirstLaunchOrEmptyState()
         }
     }
+
+
+
 
     fun saveAppState() {
         try {
             val currentState = AppState(
                 allSetups = _setups.value,
-                activeSetupName = this.activeSetup?.name
+                activeSetupName = this.activeSetupName,
+                bandColorOptions = bandColorOptions.toList(),
+                weightOptions = weightOptions.toList()
             )
             val json = gson.toJson(currentState)
             File(getApplication<Application>().filesDir, appStateFilename).writeText(json)
@@ -133,12 +186,19 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private fun handleFirstLaunchOrEmptyState(shouldSave: Boolean = true) {
         val initialSetup = TimerSetup(
             name = "Default Workout",
-            config = SetupConfig(), // Default values
+            config = SetupConfig(
+                instructions = "Welcome! This is a default workout to get you started.",
+                imageResId = R.drawable.dowel_assisted_overhead_reach,
+                timesPerDay = "1",
+                timesPerWeek = "7"
+            ), // Default values
             startRepSoundId = defaultSound.resourceId,
             startRestSoundId = defaultSound.resourceId,
             startSetRestSoundId = defaultSound.resourceId,
             completeSoundId = defaultSound.resourceId
         )
+        bandColorOptions = listOf(defaultOption)
+        weightOptions = listOf(defaultOption)
         _setups.value = listOf(initialSetup)
         applySetup(initialSetup, isInitialLoad = true) // Apply but don't re-save yet
         if (shouldSave) {
@@ -150,10 +210,14 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addOrUpdateSetup(name: String) {
         if (name.isBlank()) return
-
+        val newConfig = configState.copy(
+            imageResId = selectedImage?.resourceId ?: 0,
+            bandColor = selectedBandColor.value,
+            weightLbs = selectedWeight.value
+        )
         val newOrUpdatedSetup = TimerSetup(
             name = name,
-            config = configState,
+            config = newConfig,
             startRepSoundId = selectedStartRepSound.resourceId,
             startRestSoundId = selectedStartRestSound.resourceId,
             startSetRestSoundId = selectedStartSetRestSound.resourceId,
@@ -200,6 +264,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             completeSoundId = defaultSound.resourceId
         )
         applySetup(unsavedDefault, isUnsaved = true) // Apply temp state to UI
+        selectedImage = defaultImage //  to reset the dropdown UI
         saveAppState() // Persist the now-empty list of setups
     }
 
@@ -213,6 +278,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             soundOptions.find { it.resourceId == setup.startSetRestSoundId } ?: defaultSound
         selectedCompleteSound =
             soundOptions.find { it.resourceId == setup.completeSoundId } ?: defaultSound
+        selectedImage = imageOptions.find { it.resourceId == setup.config.imageResId } ?: defaultImage
+        selectedBandColor = bandColorOptions.find { it.value == setup.config.bandColor } ?: defaultOption
+        selectedWeight = weightOptions.find { it.value == setup.config.weightLbs } ?: defaultOption
         activeSetupName = setup.name
         activeSetup = setup
 
@@ -245,9 +313,65 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Import/Export (now uses the full AppState) ---
+// Add these new functions inside your TimerViewModel class
+
+    fun addBandColorOption(color: String) {
+        if (color.isNotBlank() && color != "N/A" && bandColorOptions.none { it.value.equals(color, ignoreCase = true) }) {
+            bandColorOptions = (bandColorOptions + SpinnerOption(color)).sortedBy { it.value }
+            saveAppState() // Save after adding
+        }
+    }
 
 // In TimerViewModel.kt
+
+    fun addWeightOption(weight: String) {
+        // 1. Validate the input as a Double.
+        val weightNum = weight.toDoubleOrNull()
+
+        // 2. The 'if' condition now correctly checks if the string could be parsed as a Double.
+        //    It also checks that the exact string doesn't already exist.
+        if (weightNum != null && weightOptions.none { it.value.equals(weight, ignoreCase = true) }) {
+            // 3. Add the new option and sort the list numerically using Doubles.
+            weightOptions = (weightOptions + SpinnerOption(weight)).sortedBy { it.value.toDoubleOrNull() ?: Double.MAX_VALUE }
+
+            // 4. Save the new state.
+            saveAppState()
+        }
+    }
+
+
+    fun deleteBandColorOption(option: SpinnerOption) {
+        if (option.value == "N/A" || bandColorOptions.none { it.value == option.value }) return
+        bandColorOptions = bandColorOptions.filter { it.value != option.value }
+
+        // Update any setups that were using the deleted color
+        _setups.value = _setups.value.map { setup ->
+            var config = setup.config
+            if (config.bandColor == option.value) config = config.copy(bandColor = "N/A")
+            setup.copy(config = config)
+        }
+
+        if (selectedBandColor.value == option.value) selectedBandColor = defaultOption
+
+        saveAppState() // Save after deleting
+    }
+
+    fun deleteWeightOption(option: SpinnerOption) {
+        if (option.value == "N/A" || weightOptions.none { it.value == option.value }) return
+        weightOptions = weightOptions.filter { it.value != option.value }
+
+        // Update any setups that were using the deleted weight
+        _setups.value = _setups.value.map { setup ->
+            if (setup.config.weightLbs == option.value) {
+                setup.copy(config = setup.config.copy(weightLbs = "N/A"))
+            } else {
+                setup
+            }
+        }
+
+        if (selectedWeight.value == option.value) selectedWeight = defaultOption
+        saveAppState() // Save after deleting
+    }
 
     fun importSetupsFromJson(json: String) {
         try {
@@ -297,7 +421,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     // --- Timer Functions and State Machine ---
 
     fun startTimer() {
-        if (timerJob?.isActive == true) return
+        if (timerJob?.isActive == true) return   // prevent accidental entry by clicking start again
+        countdownJob?.cancel()
         _timerScreenState.update { it.copy(isPaused = false) }
         currentRepNumber = 1
         currentSetNumber = 1
@@ -314,9 +439,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopTimer() {
-        countdownJob?.cancel() // <-- ADD THIS to instantly stop the countdown
+        countdownJob?.cancel() // <-- instantly stop the countdown
         timerJob?.cancel()
-        countdownJob = null    // <-- ADD THIS for cleanup
+        countdownJob = null    // <-- cleanup
         timerJob = null
         currentState = TimerState.Ready
         _timerScreenState.update { TimerScreenState(isPaused = false) }
@@ -588,6 +713,27 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         soundOptions = allSounds.sortedBy { it.displayName }
     }
 
+    // --- Image Initialization ---
+
+    private fun initializeImages() {
+        val imageList = mutableListOf(ImageOption("None", 0)) // Start with a "None" option
+        val fields: Array<Field> = R.drawable::class.java.fields
+
+        try {
+            for (field in fields) {
+                // Filter to include only your actual image files, not system XML drawables
+                if (field.name.startsWith("dowel_") || field.name.startsWith("another_prefix_")) { // Adjust prefixes as needed
+                    val name = field.name.replace("_", " ").replaceFirstChar { it.uppercase() }
+                    val resourceId = field.getInt(null)
+                    imageList.add(ImageOption(name, resourceId))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("InitializeImages", "Error loading drawable resources", e)
+        }
+        imageOptions = imageList
+        selectedImage = defaultImage // Set the initial selection to "None"
+    }
 
     sealed class TimerState {
         // States that INITIATE a countdown

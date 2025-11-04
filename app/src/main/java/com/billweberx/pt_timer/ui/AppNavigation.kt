@@ -17,12 +17,11 @@ fun AppNavigation(viewModel: TimerViewModel) {
             PTTimerScreen(
                 viewModel = viewModel,
                 onGoToSettings = { navController.navigate("settings") }
-                // Setup management parameters are removed as they move to the settings screen
             )
         }
         composable("settings") {
             SetupScreen(
-                navController = navController,
+                onGoBack = { navController.popBackStack() },
                 viewModel = viewModel
             )
         }

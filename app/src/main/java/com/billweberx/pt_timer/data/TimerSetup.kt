@@ -21,5 +21,11 @@ data class SetupConfig(
     val reps: String = "10",
     val sets: String = "2",
     val setRestTime: String = "15",
-    val totalTime: String = "0"
+    val totalTime: String = "0",
+    val instructions: String = "",
+    val imageResId: Int = 0,
+    val bandColor: String = "N/A",
+    val weightLbs: String = "N/A",
+    val timesPerDay: String = "1",
+    val timesPerWeek: String = "7"
 )

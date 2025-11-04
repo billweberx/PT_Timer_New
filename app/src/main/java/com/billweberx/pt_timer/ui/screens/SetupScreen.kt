@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -41,8 +43,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,24 +65,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
 import kotlinx.coroutines.launch as coroutineLaunch
 import com.billweberx.pt_timer.SoundOption
 import com.billweberx.pt_timer.TimerViewModel
+import com.billweberx.pt_timer.data.ImageOption
+import com.billweberx.pt_timer.data.SpinnerOption
 import com.billweberx.pt_timer.pressable
 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupScreen(
-    navController: NavController,
+    onGoBack: () -> Unit,
     viewModel: TimerViewModel,
 ) {
     val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
@@ -131,40 +139,46 @@ fun SetupScreen(
             }
         }
     )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(top = 40.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { navController.popBackStack() }
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to Home Icon"
+    Scaffold(
+        topBar = {
+            // --- 2. MOVE: The top bar content is now here, fixed at the top ---
+            TopAppBar(
+                title = {
+                    Text("Settings", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                },
+                navigationIcon = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clickable(onClick = onGoBack) // Use the passed-in lambda
+                            .padding(start = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back to Home"
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "Home")
+                    }
+                },
+                actions = {
+                    // This is a good place for actions, but we can leave a spacer to balance the navigation icon
+                    Spacer(modifier = Modifier.width(68.dp))
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
                 )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(text = "Home")
-            }
-
-            Text("Settings", style = MaterialTheme.typography.titleLarge)
-
-            Spacer(modifier = Modifier.width(68.dp))
+            )
         }
+    ) { innerPadding ->
 
         // --- Main Content with Padding ---
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding) // <-- 1. APPLY the padding from the Scaffold
+                .verticalScroll(rememberScrollState()) // <-- 2. MAKE the column scrollable
+                .padding(horizontal = 16.dp), // You can keep your horizontal padding
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -194,8 +208,96 @@ fun SetupScreen(
                 selectedSound = viewModel.selectedCompleteSound,
                 onSoundSelected = { viewModel.selectedCompleteSound = it }
             )
-
+            Spacer(modifier = Modifier.height(2.dp))
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            ImageDropdown(
+                label = "Image",
+                options = viewModel.imageOptions,
+                selectedOption = viewModel.selectedImage ?: viewModel.defaultImage,
+                onOptionSelected = { viewModel.selectedImage = it }
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            //
+            // ---  Band Color and Weight Selections ---
+            //
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                EditableDropdown(
+                    label = "Band Color",
+                    options = viewModel.bandColorOptions,
+                    selectedOption = viewModel.selectedBandColor,
+                    onOptionSelected = { viewModel.selectedBandColor = it },
+                    onAddOption = { viewModel.addBandColorOption(it) },
+                    onDeleteOption = { viewModel.deleteBandColorOption(it) },
+                    modifier = Modifier.weight(1f)
+                )
+                EditableDropdown(
+                    label = "Weight-lbs",
+                    options = viewModel.weightOptions,
+                    selectedOption = viewModel.selectedWeight,
+                    onOptionSelected = { viewModel.selectedWeight = it },
+                    onAddOption = {
+                        viewModel.addWeightOption(it)
+                        viewModel.selectedWeight = SpinnerOption(it)
+                    },
+                    onDeleteOption = { viewModel.deleteWeightOption(it) },
+                    keyboardType = KeyboardType.Decimal,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // --- Times per day and Times per week settings ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Times per Day
+                OutlinedTextField(
+                    value = viewModel.configState.timesPerDay,
+                    onValueChange = { newValue ->
+                        // Allow only digits and ensure it's a positive integer if not empty
+                        if (newValue.all { it.isDigit() }) {
+                            val num = newValue.toIntOrNull()
+                            if (num == null || num > 0) { // Allow empty or positive
+                                viewModel.onConfigChange(viewModel.configState.copy(timesPerDay = newValue))
+                            }
+                        }
+                    },
+                    label = { Text("Times per Day") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Times per Week
+                OutlinedTextField(
+                    value = viewModel.configState.timesPerWeek,
+                    onValueChange = { newValue ->
+                        // Allow only digits
+                        if (newValue.all { it.isDigit() }) {
+                            val num = newValue.toIntOrNull()
+                            // Allow empty string, or numbers between 1 and 7
+                            if (newValue.isEmpty() || (num != null && num in 1..7)) {
+                                viewModel.onConfigChange(viewModel.configState.copy(timesPerWeek = newValue))
+                            }
+                        }
+                    },
+                    label = { Text("Times per Week") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            //
+            // ---  Manage Setups ---
+            //
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -289,6 +391,8 @@ fun SetupScreen(
                     }
                 }
             }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // --- Rows 9-10: Input Fields ---
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -315,7 +419,7 @@ fun SetupScreen(
                                 if (!viewModel.validateExerciseTime()) {
                                     // If validation fails, launch a coroutine on the correct scope.
                                     // This is now unambiguous and will work correctly.
-                                    scope.coroutineLaunch  {
+                                    scope.coroutineLaunch {
                                         exerciseTimeFocusRequester.requestFocus()
                                     }
                                 }
@@ -342,6 +446,7 @@ fun SetupScreen(
                     modifier = Modifier.weight(1f)
                 )
             }
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TimerInputField(
                     label = "Sets",
@@ -376,6 +481,9 @@ fun SetupScreen(
                     modifier = Modifier.weight(1f)
                 )
             }
+            Spacer(modifier = Modifier.height(2.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             // --- Row 12: New Setup Name Field ---
             OutlinedTextField(
                 value = newSetupName,
@@ -384,7 +492,11 @@ fun SetupScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
-            // Row with the first three buttons, using Surface
+            Spacer(modifier = Modifier.height(2.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Row with the first Two buttons, using Surface
             Row(modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
@@ -433,6 +545,7 @@ fun SetupScreen(
                     }
                 }
             }
+
             // --- Row 14: Import/Export Buttons ---
             Row(
                 modifier = Modifier
@@ -480,6 +593,34 @@ fun SetupScreen(
                     }
                 }
             }
+            //
+            // Exercise Image
+            //
+            if (viewModel.configState.imageResId != 0) {
+                Image(
+                    painter = painterResource(id = viewModel.configState.imageResId), // <-- Use painterResource
+                    contentDescription = "Exercise Image",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .padding(vertical = 8.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+            OutlinedTextField(
+                value = viewModel.configState.instructions,
+                onValueChange = { newText ->// Create a copy of the current config with the new text
+                    val newConfig = viewModel.configState.copy(instructions = newText)
+                    // Call the handler in the ViewModel
+                    viewModel.onConfigChange(newConfig)
+                },
+                label = { Text("Exercise Instructions") },
+                placeholder = { Text("Enter any notes for this exercise...") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                minLines = 3
+            )
             Spacer(modifier = Modifier.height(50.dp))
         }
     }
@@ -548,6 +689,52 @@ fun SoundDropdown(
             }
         }
     }
+}
+// In a new file, or at the bottom of SetupScreen.kt
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ImageDropdown(
+    label: String,
+    options: List<ImageOption>,
+    selectedOption: ImageOption,
+    onOptionSelected: (ImageOption) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+        ExposedDropdownMenuBox(
+            expanded = isExpanded,
+            onExpandedChange = { isExpanded = !isExpanded },
+            modifier = modifier
+        ) {
+            OutlinedTextField(
+                value = selectedOption.name,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text(label) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isExpanded) },
+                modifier = Modifier.menuAnchor(
+                    type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                    enabled = true
+                )
+                    .fillMaxWidth()
+            )
+            ExposedDropdownMenu(
+                expanded = isExpanded,
+                onDismissRequest = { isExpanded = false }
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.name) },
+                        onClick = {
+                            onOptionSelected(option)
+                            isExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+
 }
 
 
