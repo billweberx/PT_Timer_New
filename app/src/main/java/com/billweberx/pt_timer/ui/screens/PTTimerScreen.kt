@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -375,6 +374,28 @@ fun PTTimerScreen(
                         modifier = Modifier.weight(1f)
                     )
                     ReadOnlyField(
+                        label = "Reps",
+                        value = viewModel.configState.reps,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReadOnlyField(
+                        label = "Total Time",
+                        value = viewModel.configState.totalTime,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ReadOnlyField(
+                        label = "Get Ready!",
+                        value = viewModel.configState.getReadyTime,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReadOnlyField(
                         label = "Sets",
                         value = viewModel.configState.sets,
                         modifier = Modifier.weight(1f)
@@ -385,24 +406,6 @@ fun PTTimerScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ReadOnlyField(
-                        label = "Reps",
-                        value = viewModel.configState.reps,
-                        modifier = Modifier.weight(1f)
-                    )
-                    ReadOnlyField(
-                        label = "Total Time",
-                        value = viewModel.configState.totalTime,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-
             }
         }
 

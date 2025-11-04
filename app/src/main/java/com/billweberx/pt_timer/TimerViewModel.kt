@@ -66,6 +66,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var selectedStartRestSound by mutableStateOf(defaultSound)
     var selectedStartSetRestSound by mutableStateOf(defaultSound)
     var selectedCompleteSound by mutableStateOf(defaultSound)
+    var selectedGetReadySound by mutableStateOf(defaultSound)
     var activeSetupName by mutableStateOf<String?>("")
     var activeSetup by mutableStateOf<TimerSetup?>(null)
 
@@ -113,12 +114,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
         return true // Validation PASSED
     }
-// In TimerViewModel.kt
-
-    // In TimerViewModel.kt
-
-    // In TimerViewModel.kt
-
     private fun loadAppState() {
         viewModelScope.launch(Dispatchers.IO) { // Continue to do file I/O on a background thread
             val stateFile = File(getApplication<Application>().filesDir, appStateFilename)
@@ -133,7 +128,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 val json = stateFile.readText()
                 val appState = gson.fromJson(json, AppState::class.java)
 
-                // --- START of the FIX ---
                 // Switch to the Main thread before updating the UI state
                 withContext(Dispatchers.Main) {
                     // 1. Load the option lists FIRST.
@@ -165,9 +159,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
-
-
     fun saveAppState() {
         try {
             val currentState = AppState(
@@ -195,7 +186,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             startRepSoundId = defaultSound.resourceId,
             startRestSoundId = defaultSound.resourceId,
             startSetRestSoundId = defaultSound.resourceId,
-            completeSoundId = defaultSound.resourceId
+            completeSoundId = defaultSound.resourceId,
+            getReadySoundId = defaultSound.resourceId
         )
         bandColorOptions = listOf(defaultOption)
         weightOptions = listOf(defaultOption)
@@ -221,7 +213,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             startRepSoundId = selectedStartRepSound.resourceId,
             startRestSoundId = selectedStartRestSound.resourceId,
             startSetRestSoundId = selectedStartSetRestSound.resourceId,
-            completeSoundId = selectedCompleteSound.resourceId
+            completeSoundId = selectedCompleteSound.resourceId,
+            getReadySoundId = selectedGetReadySound.resourceId
         )
 
         val currentList = _setups.value.toMutableList()
@@ -261,7 +254,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             startRepSoundId = defaultSound.resourceId,
             startRestSoundId = defaultSound.resourceId,
             startSetRestSoundId = defaultSound.resourceId,
-            completeSoundId = defaultSound.resourceId
+            completeSoundId = defaultSound.resourceId,
+            getReadySoundId = defaultSound.resourceId
         )
         applySetup(unsavedDefault, isUnsaved = true) // Apply temp state to UI
         selectedImage = defaultImage //  to reset the dropdown UI
@@ -278,6 +272,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             soundOptions.find { it.resourceId == setup.startSetRestSoundId } ?: defaultSound
         selectedCompleteSound =
             soundOptions.find { it.resourceId == setup.completeSoundId } ?: defaultSound
+        selectedGetReadySound =
+            soundOptions.find { it.resourceId == setup.getReadySoundId } ?: defaultSound
         selectedImage = imageOptions.find { it.resourceId == setup.config.imageResId } ?: defaultImage
         selectedBandColor = bandColorOptions.find { it.value == setup.config.bandColor } ?: defaultOption
         selectedWeight = weightOptions.find { it.value == setup.config.weightLbs } ?: defaultOption
@@ -313,16 +309,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-// Add these new functions inside your TimerViewModel class
-
     fun addBandColorOption(color: String) {
         if (color.isNotBlank() && color != "N/A" && bandColorOptions.none { it.value.equals(color, ignoreCase = true) }) {
             bandColorOptions = (bandColorOptions + SpinnerOption(color)).sortedBy { it.value }
             saveAppState() // Save after adding
         }
     }
-
-// In TimerViewModel.kt
 
     fun addWeightOption(weight: String) {
         // 1. Validate the input as a Double.
@@ -339,7 +331,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
     fun deleteBandColorOption(option: SpinnerOption) {
         if (option.value == "N/A" || bandColorOptions.none { it.value == option.value }) return
         bandColorOptions = bandColorOptions.filter { it.value != option.value }
@@ -350,9 +341,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             if (config.bandColor == option.value) config = config.copy(bandColor = "N/A")
             setup.copy(config = config)
         }
-
         if (selectedBandColor.value == option.value) selectedBandColor = defaultOption
-
         saveAppState() // Save after deleting
     }
 
@@ -368,7 +357,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 setup
             }
         }
-
         if (selectedWeight.value == option.value) selectedWeight = defaultOption
         saveAppState() // Save after deleting
     }
@@ -404,7 +392,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
     fun saveSetupsToUri(context: Context, uri: Uri) {
         try {
             val currentState = AppState(
@@ -426,13 +413,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         _timerScreenState.update { it.copy(isPaused = false) }
         currentRepNumber = 1
         currentSetNumber = 1
-
         val reps = this.configState.reps.toIntOrNull() ?: 1
         val totalTime = this.configState.totalTime.toLongOrNull() ?: 0L
         setMasterClock = if (reps <= 0 && totalTime > 0) totalTime else 0
-
         currentState = determineInitialState()
-
         timerJob = viewModelScope.launch {
             runStateMachine()
         }
@@ -451,7 +435,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun pauseTimer() {
         val state = currentState
         // Only pause if we are in a cancellable, running state
-        if (countdownJob?.isActive == true && (state is TimerState.ExercisingInProgress || state is TimerState.RestingInProgress || state is TimerState.SetRestingInProgress)) {
+        if (countdownJob?.isActive == true && (state is TimerState.ExercisingInProgress || state is TimerState.RestingInProgress || state is TimerState.SetRestingInProgress || state is TimerState.GettingReadyInProgress)) {
             stateBeforePause = state // Save our current "in progress" state
             currentState = TimerState.Paused
             _timerScreenState.update { it.copy(status = "Paused", isPaused = true) }
@@ -474,6 +458,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
                     is TimerState.RestingInProgress -> determineNextStateAfterRest()
                     is TimerState.SetRestingInProgress -> determineNextStateAfterSetRest()
+                    is TimerState.GettingReadyInProgress -> determineNextStateAfterGetReady()
                     else -> stateToRestore // Fallback for other states
                 }
             } else {
@@ -535,7 +520,22 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     countdownJob = viewModelScope.launch { countdown(state.remainingDuration) }
                     currentState = TimerState.SetRestingInProgress
                 }
-
+                is TimerState.GettingReady -> {
+                    _timerScreenState.update {
+                        it.copy(
+                            status = "Get Ready!",
+                            isPaused = false
+                        )
+                    }
+                    if (state.remainingDuration == state.totalDuration && !resuming) {
+                        AppSoundPlayer.playSound(
+                            getApplication(),
+                            selectedGetReadySound.resourceId
+                        )
+                    }
+                    countdownJob = viewModelScope.launch { countdown(state.remainingDuration) }
+                    currentState = TimerState.GettingReadyInProgress
+                }
                 // --- WAITING / IDLE STATES ---
                 // These states do nothing but wait for an external event (from the countdown worker or UI)
                 // to change the `currentState`.
@@ -543,6 +543,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 is TimerState.ExercisingInProgress,
                 is TimerState.RestingInProgress,
                 is TimerState.SetRestingInProgress,
+                is TimerState.GettingReadyInProgress,
                 is TimerState.Paused -> {
                     // DO NOTHING. The state machine is supervising.
                     // It's waiting for the countdown worker or a UI event to change `currentState`.
@@ -565,8 +566,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // In TimerViewModel.kt
-
     private suspend fun countdown(durationMillis: Long) {
         var remainingMillis = durationMillis
         try {
@@ -576,9 +575,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     coroutineContext.ensureActive() // Allow cancellation
                     delay(50) // Wait patiently
                 }
-
                 coroutineContext.ensureActive()
-
                 _timerScreenState.update {
                     it.copy(
                         // remainingTime is now in Millis, formatTime will handle display
@@ -599,6 +596,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
                     is TimerState.RestingInProgress -> determineNextStateAfterRest()
                     is TimerState.SetRestingInProgress -> determineNextStateAfterSetRest()
+                    is TimerState.GettingReadyInProgress -> determineNextStateAfterGetReady()
                     else -> currentState
                 }
             }
@@ -607,13 +605,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-// In TimerViewModel.kt
-
     private fun determineInitialState(): TimerState {
-        val exerciseSec = this.configState.exerciseTime.toDoubleOrNull() ?: 0.0
-        val moveToSec = this.configState.moveToTime.toDoubleOrNull() ?: 0.0
-        val fullExerciseDurationMillis = ((exerciseSec + moveToSec) * 1000).toLong()
-        return TimerState.Exercising(fullExerciseDurationMillis, fullExerciseDurationMillis)
+        return determineNextStateAfterSetRest()  // starts at the Get Ready phase.
     }
 
     private fun determineNextStateAfterExercise(): TimerState {
@@ -653,14 +646,20 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun determineNextStateAfterSetRest(): TimerState {
+        val getReadySec = this.configState.getReadyTime.toDoubleOrNull() ?: 0.0
+        val fullGetReadyDurationMillis = (getReadySec * 1000).toLong()
+        return TimerState.GettingReady(fullGetReadyDurationMillis, fullGetReadyDurationMillis)
+    }
+
+    private fun determineNextStateAfterGetReady(): TimerState {
         val exerciseSec = this.configState.exerciseTime.toDoubleOrNull() ?: 0.0
         val moveToSec = this.configState.moveToTime.toDoubleOrNull() ?: 0.0
         val fullExerciseDurationMillis = ((exerciseSec + moveToSec) * 1000).toLong()
         return TimerState.Exercising(fullExerciseDurationMillis, fullExerciseDurationMillis)
     }
-
+    //
     // --- Sound Initialization ---
-
+    //
     private fun initializeSounds() {
         val allSounds = mutableListOf<SoundOption>()
         allSounds.add(SoundOption("None", -1))
@@ -675,9 +674,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
         soundOptions = allSounds.sortedBy { it.displayName }
     }
-
+    //
     // --- Image Initialization ---
-
+    //
     private fun initializeImages() {
         val imageList = mutableListOf(ImageOption("None", 0)) // Start with a "None" option
         val fields: Array<Field> = R.drawable::class.java.fields
@@ -703,11 +702,13 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         data class Exercising(val totalDuration: Long, val remainingDuration: Long) : TimerState()
         data class Resting(val totalDuration: Long, val remainingDuration: Long) : TimerState()
         data class SetResting(val totalDuration: Long, val remainingDuration: Long) : TimerState()
+        data class GettingReady(val totalDuration: Long, val remainingDuration: Long) : TimerState()
 
         // States that REPRESENT an ONGOING countdown
         data object ExercisingInProgress : TimerState()
         data object RestingInProgress : TimerState()
         data object SetRestingInProgress : TimerState()
+        data object GettingReadyInProgress : TimerState()
 
         // Control states
         data object Paused : TimerState()

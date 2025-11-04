@@ -183,7 +183,12 @@ fun SetupScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // --- Rows 2-7: Sound Selections ---
-
+            SoundDropdown(
+                label = "Get Ready",
+                soundOptions = viewModel.soundOptions,
+                selectedSound = viewModel.selectedGetReadySound,
+                onSoundSelected = { viewModel.selectedGetReadySound = it }
+            )
             SoundDropdown(
                 label = "Start Reps",
                 soundOptions = viewModel.soundOptions,
@@ -431,9 +436,6 @@ fun SetupScreen(
                             }
                         }
                 )
-
-
-
                 TimerInputField(
                     label = "Move From",
                     textValue = viewModel.configState.moveFromTime,
@@ -444,6 +446,9 @@ fun SetupScreen(
                     },
                     modifier = Modifier.weight(1f)
                 )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TimerInputField(
                     label = "Rest",
                     textValue = viewModel.configState.restTime,
@@ -454,27 +459,8 @@ fun SetupScreen(
                     },
                     modifier = Modifier.weight(1f)
                 )
-            }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TimerInputField(
-                    label = "Sets",
-                    textValue = viewModel.configState.sets,
-                    onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(sets = newTextValue))
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                TimerInputField(
-                    label = "Set Rest",
-                    textValue = viewModel.configState.setRestTime,
-                    onTextChange = { newTextValue ->
-                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
-                            viewModel.onConfigChange(viewModel.configState.copy(setRestTime = newTextValue))
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
+
                 TimerInputField(
                     label = "Reps",
                     textValue = viewModel.configState.reps,
@@ -489,6 +475,34 @@ fun SetupScreen(
                     onTextChange = { newTextValue ->
                         if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
                             viewModel.onConfigChange(viewModel.configState.copy(totalTime = newTextValue))
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TimerInputField(
+                    label = "Get Ready",
+                    textValue = viewModel.configState.getReadyTime,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(getReadyTime = newTextValue))
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                TimerInputField(
+                    label = "Sets",
+                    textValue = viewModel.configState.sets,
+                    onTextChange = { newTextValue ->
+                        viewModel.onConfigChange(viewModel.configState.copy(sets = newTextValue))
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                TimerInputField(
+                    label = "Set Rest",
+                    textValue = viewModel.configState.setRestTime,
+                    onTextChange = { newTextValue ->
+                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                            viewModel.onConfigChange(viewModel.configState.copy(setRestTime = newTextValue))
                         }
                     },
                     modifier = Modifier.weight(1f)

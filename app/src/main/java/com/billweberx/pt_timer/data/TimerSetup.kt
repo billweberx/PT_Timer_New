@@ -9,7 +9,8 @@ data class TimerSetup(
     val startRepSoundId: Int,
     val startRestSoundId: Int,
     val startSetRestSoundId: Int,
-    val completeSoundId: Int
+    val completeSoundId: Int,
+    val getReadySoundId: Int
 )
 
 @Keep
@@ -27,5 +28,6 @@ data class SetupConfig(
     val bandColor: String = "N/A",
     val weightLbs: String = "N/A",
     val timesPerDay: String = "1",
-    val timesPerWeek: String = "7"
+    val timesPerWeek: String = "7",
+    val getReadyTime: String = "5"
 )
