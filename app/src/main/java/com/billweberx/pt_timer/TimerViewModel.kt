@@ -27,7 +27,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 import java.io.File
-import java.lang.reflect.Field
 import com.billweberx.pt_timer.data.ImageOption
 import com.billweberx.pt_timer.data.SpinnerOption
 import kotlinx.coroutines.Dispatchers
@@ -55,7 +54,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var selectedImage by mutableStateOf<ImageOption?>(null)
     val defaultImage: ImageOption
-        get() = imageOptions.firstOrNull { it.resourceId == 0 } ?: ImageOption("None", 0)
+        get() = imageOptions.firstOrNull { it.resourceId == 0 } ?: ImageOption("None", 0, "none")
 
     // --- UI Properties ---
     var configState by mutableStateOf(SetupConfig())
@@ -723,23 +722,29 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     // --- Image Initialization ---
     //
     private fun initializeImages() {
-        val imageList = mutableListOf(ImageOption("None", 0)) // Start with a "None" option
-        val fields: Array<Field> = R.drawable::class.java.fields
+        val allImages = mutableListOf<ImageOption>()
+        val defaultImage = ImageOption("None", 0, "none")
+        allImages.add(defaultImage) // Use the defaultImage object
+        R.drawable::class.java.fields
+            // The incorrect filter line has been DELETED from here
+            .forEach { field ->
+                try {
+                    if (field.name.startsWith("abc_") ||
+                        field.name.startsWith("ic_") ||
+                        field.name.startsWith("common_") ||
+                        field.name.startsWith("googleg_") ||
+                        field.name.startsWith("notification_") ||
+                        field.name.contains("$")
+                    ) return@forEach
 
-        try {
-            for (field in fields) {
-                // Filter to include only your actual image files, not system XML drawables
-                if (field.name.startsWith("dowel_") || field.name.startsWith("another_prefix_")) { // Adjust prefixes as needed
-                    val name = field.name.replace("_", " ").replaceFirstChar { it.uppercase() }
                     val resourceId = field.getInt(null)
-                    imageList.add(ImageOption(name, resourceId))
+                    val displayName = field.name.replace('_', ' ').replaceFirstChar { it.titlecase() }
+                    val resourceName = field.name // The raw field name, which matches your JSON
+                    allImages.add(ImageOption(displayName, resourceId, resourceName))
+                } catch (_: Exception) {
                 }
             }
-        } catch (e: Exception) {
-            Log.e("InitializeImages", "Error loading drawable resources", e)
-        }
-        imageOptions = imageList
-        selectedImage = defaultImage // Set the initial selection to "None"
+        imageOptions = allImages.sortedBy { it.resourceName }
     }
 
     sealed class TimerState {
