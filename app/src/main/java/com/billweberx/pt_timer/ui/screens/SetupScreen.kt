@@ -633,15 +633,17 @@ fun SetupScreen(
             //
             // Exercise Image
             //
-            if (viewModel.configState.imageResId != 0) {
+            val imageId = viewModel.configState.imageResId // Get the nullable Int?
+            if (imageId != null && imageId != 0) { // Check for both null and 0
+                // Inside this 'if', the compiler 'smart casts' imageId to a non-nullable Int
+                val painter = painterResource(id = imageId)
                 Image(
-                    painter = painterResource(id = viewModel.configState.imageResId), // <-- Use painterResource
-                    contentDescription = "Exercise Image",
+                    painter = painter,
+                    contentDescription = "Exercise Image: ${viewModel.activeSetup?.name}",
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .padding(vertical = 8.dp),
-                    contentScale = ContentScale.Fit
+                        .fillMaxWidth() // 1. Force the width to match the screen.
+                        .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height), // 2. Force height based on aspect ratio.
+                    contentScale = ContentScale.FillWidth // 3. Ensure the image scales correctly to the new bounds.
                 )
             }
             OutlinedTextField(

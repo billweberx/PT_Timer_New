@@ -136,22 +136,36 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     bandColorOptions = appState.bandColorOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
                     weightOptions = appState.weightOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
 
-                    // 2. Load all the setups.
-                    _setups.value = appState.allSetups
-
-                    // 3. NOW, find and apply the active setup. Because we are on the Main thread,
-                    //    the UI will recompose reliably.
-                    if (appState.allSetups.isEmpty()) {
-                        handleFirstLaunchOrEmptyState()
-                    } else {
-                        val activeSetup = appState.allSetups.find { it.name == appState.activeSetupName }
-                            ?: appState.allSetups.first()
-                        // The 'isInitialLoad' flag prevents a re-save, which is correct.
-                        applySetup(activeSetup, isInitialLoad = true)
+                    // 1. Check if the loaded data is from an old file.
+                    //    We map over the setups to create a new, corrected list.
+                    val migratedSetups = appState.allSetups.map { setup ->
+                        // If the new `imageResName` is "none" BUT the old `imageResId` exists...
+                        if (setup.config.imageResName == "none" && setup.config.imageResId != 0 && setup.config.imageResId != null) {
+                            // ...it means we loaded an old file. Find the correct resourceName from the old ID.
+                            val foundImage = imageOptions.find { it.resourceId == setup.config.imageResId }
+                            // Create a new config with the correct resourceName.
+                            val migratedConfig = setup.config.copy(imageResName = foundImage?.resourceName ?: "none")
+                            // Return a new setup object with the migrated config.
+                            setup.copy(config = migratedConfig)
+                        } else {
+                            // This setup is already in the new format, so just return it as is.
+                            setup
+                        }
                     }
-                }
-                // --- END of the FIX ---
+                    // 2. Load the *migrated* list of setups into our state.
+                    _setups.value = migratedSetups
 
+                    // 3. Now, find and apply the active setup from the corrected list.
+                    val setupToLoad = if (migratedSetups.isEmpty()) {
+                        // If the list is empty after migration, create a fresh default state in memory.
+                        handleFirstLaunchOrEmptyState(shouldSave = false)
+                        // Return the `activeSetup` property that was just populated by the function above.
+                    } else {
+                        // If the list is NOT empty, find the active setup or default to the first one.
+                        migratedSetups.find { it.name == appState.activeSetupName } ?: migratedSetups.first()
+                    }
+                    applySetup(setupToLoad, isInitialLoad = true)
+                }
             } catch (e: Exception) {
                 Log.e("LoadAppState", "Exception while reading/parsing app_state.json.", e)
                 withContext(Dispatchers.Main) {
@@ -188,7 +202,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun handleFirstLaunchOrEmptyState(shouldSave: Boolean = true) {
+    private fun handleFirstLaunchOrEmptyState(shouldSave: Boolean = true): TimerSetup {
         val initialSetup = TimerSetup(
             name = "Default Workout",
             config = SetupConfig(
@@ -210,6 +224,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         if (shouldSave) {
             saveAppState() // Save the initial state only if needed
         }
+        return initialSetup
     }
 
     // --- Setup Management Functions (now use saveAppState) ---
@@ -217,7 +232,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun addOrUpdateSetup(name: String) {
         if (name.isBlank()) return
         val newConfig = configState.copy(
-            imageResId = selectedImage?.resourceId ?: 0,
+            imageResName = selectedImage?.resourceName ?: "none",
             bandColor = selectedBandColor.value,
             weightLbs = selectedWeight.value,
         )

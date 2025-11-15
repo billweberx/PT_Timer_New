@@ -431,22 +431,27 @@ fun PTTimerScreen(
                     modifier = Modifier.rotate(if (instructionsExpanded) 180f else 0f) // Animate rotation
                 )
             }
-            // 2. The animated text field
+            //2. The animated content (Image and Text Field)
             AnimatedVisibility(visible = instructionsExpanded) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-
-                    // --- Display the bundled image if the ID is valid ---
-                    if (viewModel.configState.imageResId != 0) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp) // Adds space between items
+                ) {
+                    // 1. Display the image FIRST, if it exists.
+                    val imageId = viewModel.configState.imageResId // Get the nullable Int?
+                    if (imageId != null && imageId != 0) { // Check for both null and 0
+                        // Inside this 'if', the compiler 'smart casts' imageId to a non-nullable Int
+                        val painter = painterResource(id = imageId)
                         Image(
-                            painter = painterResource(id = viewModel.configState.imageResId), // <-- Use painterResource
-                            contentDescription = "Exercise Image",
+                            painter = painter,
+                            contentDescription = "Exercise Image: ${viewModel.activeSetup?.name}",
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(16f / 9f)
-                                .padding(bottom = 8.dp),
-                            contentScale = ContentScale.Fit
+                                .fillMaxWidth() // Force the width to match the screen.
+                                .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height), // Force height based on aspect ratio.
+                            contentScale = ContentScale.FillWidth // Ensure it scales correctly to the new bounds.
                         )
                     }
+                    // 2. Display the instructions text field SECOND.
                     OutlinedTextField(
                         value = viewModel.configState.instructions,
                         onValueChange = {}, // Empty lambda makes it read-only
@@ -456,8 +461,9 @@ fun PTTimerScreen(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp) // Padding at the bottom
                     )
-                }
-            }
+                }  // column
+            }  // AnimatedVisibility block
+
         }
     }  // <-- This is the closing brace of the main Column
 }
