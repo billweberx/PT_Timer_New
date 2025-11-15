@@ -225,11 +225,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val newOrUpdatedSetup = TimerSetup(
             name = name,
             config = newConfig,
-            getReadySound = selectedGetReadySound.displayName,
-            startRepSound = selectedStartRepSound.displayName,
-            startRestSound = selectedStartRestSound.displayName,
-            startSetRestSound = selectedStartSetRestSound.displayName,
-            completeSound = selectedCompleteSound.displayName
+            getReadySound = selectedGetReadySound.resourceName,
+            startRepSound = selectedStartRepSound.resourceName,
+            startRestSound = selectedStartRestSound.resourceName,
+            startSetRestSound = selectedStartSetRestSound.resourceName,
+            completeSound = selectedCompleteSound.resourceName
         )
 
         val currentList = _setups.value.toMutableList()
