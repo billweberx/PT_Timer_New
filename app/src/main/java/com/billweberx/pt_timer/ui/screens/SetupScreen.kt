@@ -91,7 +91,7 @@ fun SetupScreen(
     val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
     var isManageSetupsExpanded by remember { mutableStateOf(false) }
     var newSetupName by remember { mutableStateOf("") }
-    var showClearConfirmDialog by remember { mutableStateOf(false) }
+    val (showClearConfirmDialog, setShowClearConfirmDialog) = remember { mutableStateOf(false) }
     val context = LocalContext.current
     val toastMessage by viewModel.toastMessage.collectAsState()
     val exerciseTimeFocusRequester = remember { FocusRequester() }
@@ -235,7 +235,12 @@ fun SetupScreen(
                     label = "Band Color",
                     options = viewModel.bandColorOptions,
                     selectedOption = viewModel.selectedBandColor,
-                    onOptionSelected = { viewModel.selectedBandColor = it },
+                    onOptionSelected = { newSelection ->
+                        // 1. Update the UI state so the spinner shows the new selection
+                        viewModel.selectedBandColor = newSelection
+                        // 2. Update the central configState so the change will be saved
+                        viewModel.configState = viewModel.configState.copy(bandColor = newSelection.value)
+                    },
                     onAddOption = { viewModel.addBandColorOption(it) },
                     onDeleteOption = { viewModel.deleteBandColorOption(it) },
                     modifier = Modifier.weight(1f)
@@ -244,7 +249,12 @@ fun SetupScreen(
                     label = "Weight-lbs",
                     options = viewModel.weightOptions,
                     selectedOption = viewModel.selectedWeight,
-                    onOptionSelected = { viewModel.selectedWeight = it },
+                    onOptionSelected = { newSelection ->
+                        // 1. Update the UI state
+                        viewModel.selectedWeight = newSelection
+                        // 2. Update the central configState so the change will be saved
+                        viewModel.configState = viewModel.configState.copy(weightLbs = newSelection.value)
+                    },
                     onAddOption = {
                         viewModel.addWeightOption(it)
                         viewModel.selectedWeight = SpinnerOption(it)
@@ -536,7 +546,7 @@ fun SetupScreen(
                     color = if (saveButtonEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = if (saveButtonEnabled) MaterialTheme.colorScheme.onPrimary else Color.Gray,
                     tonalElevation = 2.dp,
-                    modifier = Modifier.Companion.pressable(
+                    modifier = Modifier.pressable(
                         interactionSource = saveInteractionSource,
                         enabled = saveButtonEnabled,
                         onClick = { viewModel.addOrUpdateSetup(name = newSetupName) }
@@ -561,7 +571,7 @@ fun SetupScreen(
                     modifier = Modifier.pressable(
                         interactionSource = clearInteractionSource,
                         enabled = clearButtonEnabled,
-                        onClick = { showClearConfirmDialog = true }
+                        onClick = { setShowClearConfirmDialog(true) }
                     )
                 ) {
                     Box(
@@ -654,7 +664,7 @@ fun SetupScreen(
 
     if (showClearConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { showClearConfirmDialog = false },
+            onDismissRequest = { setShowClearConfirmDialog(false)},
             title = { Text("Confirm Clear") },
             text = { Text("Are you sure you want to delete the entire setup list?") },
             confirmButton = {
@@ -662,12 +672,12 @@ fun SetupScreen(
                     onClick = {
                         viewModel.clearAllSetups()
                         newSetupName = ""
-                        showClearConfirmDialog = false
+                        setShowClearConfirmDialog(false)
                     }
                 ) { Text("Yes, Clear All") }
             },
             dismissButton = {
-                Button(onClick = { showClearConfirmDialog = false }) { Text("No") }
+                Button(onClick = { setShowClearConfirmDialog(false) }) { Text("No") }
             }
         )
     }
@@ -682,10 +692,11 @@ fun SoundDropdown(
     onSoundSelected: (SoundOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var (expanded, setExpanded) = remember { mutableStateOf(false) }
+
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
+        onExpandedChange = { setExpanded(it) },
         modifier = modifier
     ) {
         OutlinedTextField(
@@ -728,10 +739,11 @@ fun ImageDropdown(
     onOptionSelected: (ImageOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
+    var (isExpanded, setExpanded) = remember { mutableStateOf(false) }
+   // var isExpanded by remember { mutableStateOf(false) }
         ExposedDropdownMenuBox(
             expanded = isExpanded,
-            onExpandedChange = { isExpanded = !isExpanded },
+            onExpandedChange = { setExpanded(it) },
             modifier = modifier
         ) {
             OutlinedTextField(

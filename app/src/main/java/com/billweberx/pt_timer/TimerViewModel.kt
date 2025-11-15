@@ -14,8 +14,8 @@ import com.billweberx.pt_timer.data.SetupConfig
 import com.billweberx.pt_timer.data.TimerScreenState
 import com.billweberx.pt_timer.data.TimerSetup
 import com.billweberx.pt_timer.util.AppSoundPlayer
-import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -26,7 +26,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.coroutines.coroutineContext
 import java.io.File
 import java.lang.reflect.Field
 import com.billweberx.pt_timer.data.ImageOption
@@ -35,12 +34,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 
+
+
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
     private val appStateFilename = "app_state.json"
-    private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
+  //  private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     private var timerJob: Job? = null
     private var countdownJob: Job? = null
 
@@ -61,7 +62,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var soundOptions by mutableStateOf<List<SoundOption>>(emptyList())
         private set
     val defaultSound: SoundOption
-        get() = soundOptions.firstOrNull { it.resourceId == -1 } ?: SoundOption("None", -1)
+        get() = soundOptions.find { it.displayName.equals("None", ignoreCase = true) } ?: SoundOption("None", -1, "none")
+
     var selectedStartRepSound by mutableStateOf(defaultSound)
     var selectedStartRestSound by mutableStateOf(defaultSound)
     var selectedStartSetRestSound by mutableStateOf(defaultSound)
@@ -78,11 +80,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     // band color and weights properties
     var bandColorOptions by mutableStateOf<List<SpinnerOption>>(emptyList())
-        private set
     var selectedBandColor by mutableStateOf(SpinnerOption("N/A"))
     var weightOptions by mutableStateOf<List<SpinnerOption>>(emptyList())
-        private set
+
     var selectedWeight by mutableStateOf(SpinnerOption("N/A"))
+    private val gson = GsonBuilder().setPrettyPrinting().create()
 
     val defaultOption = SpinnerOption("N/A")
     init {
@@ -131,8 +133,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 // Switch to the Main thread before updating the UI state
                 withContext(Dispatchers.Main) {
                     // 1. Load the option lists FIRST.
-                    bandColorOptions = appState.bandColorOptions.ifEmpty { listOf(defaultOption) }
-                    weightOptions = appState.weightOptions.ifEmpty { listOf(defaultOption) }
+                    // Convert loaded List<String> back to List<SpinnerOption>
+                    bandColorOptions = appState.bandColorOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
+                    weightOptions = appState.weightOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
 
                     // 2. Load all the setups.
                     _setups.value = appState.allSetups
@@ -161,11 +164,23 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveAppState() {
         try {
+            val activeIndex = _setups.value.indexOfFirst { it.name == activeSetupName }
+
+            // 2. If the active setup is found in the list...
+            if (activeIndex != -1) {
+                // 3. ...create an updated version of it using the LATEST configState.
+                val updatedActiveSetup = _setups.value[activeIndex].copy(config = configState)
+                // 4. Create a new list with the updated setup replaced at the correct index.
+                _setups.value = _setups.value.toMutableList().apply {
+                    set(activeIndex, updatedActiveSetup)
+                }.toList()
+            }
             val currentState = AppState(
                 allSetups = _setups.value,
                 activeSetupName = this.activeSetupName,
-                bandColorOptions = bandColorOptions.toList(),
-                weightOptions = weightOptions.toList()
+                // Convert List<SpinnerOption> to List<String> for saving
+                bandColorOptions = bandColorOptions.map { it.value },
+                weightOptions = weightOptions.map { it.value }
             )
             val json = gson.toJson(currentState)
             File(getApplication<Application>().filesDir, appStateFilename).writeText(json)
@@ -183,11 +198,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 timesPerDay = "1",
                 timesPerWeek = "7"
             ), // Default values
-            startRepSoundId = defaultSound.resourceId,
-            startRestSoundId = defaultSound.resourceId,
-            startSetRestSoundId = defaultSound.resourceId,
-            completeSoundId = defaultSound.resourceId,
-            getReadySoundId = defaultSound.resourceId
+            getReadySound = defaultSound.displayName,
+            startRepSound = defaultSound.displayName,
+            startRestSound = defaultSound.displayName,
+            startSetRestSound = defaultSound.displayName,
+            completeSound = defaultSound.displayName
         )
         bandColorOptions = listOf(defaultOption)
         weightOptions = listOf(defaultOption)
@@ -205,16 +220,16 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val newConfig = configState.copy(
             imageResId = selectedImage?.resourceId ?: 0,
             bandColor = selectedBandColor.value,
-            weightLbs = selectedWeight.value
+            weightLbs = selectedWeight.value,
         )
         val newOrUpdatedSetup = TimerSetup(
             name = name,
             config = newConfig,
-            startRepSoundId = selectedStartRepSound.resourceId,
-            startRestSoundId = selectedStartRestSound.resourceId,
-            startSetRestSoundId = selectedStartSetRestSound.resourceId,
-            completeSoundId = selectedCompleteSound.resourceId,
-            getReadySoundId = selectedGetReadySound.resourceId
+            getReadySound = selectedGetReadySound.displayName,
+            startRepSound = selectedStartRepSound.displayName,
+            startRestSound = selectedStartRestSound.displayName,
+            startSetRestSound = selectedStartSetRestSound.displayName,
+            completeSound = selectedCompleteSound.displayName
         )
 
         val currentList = _setups.value.toMutableList()
@@ -250,12 +265,13 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         _setups.value = emptyList()
         val unsavedDefault = TimerSetup(
             name = "Unsaved Workout",
-            config = SetupConfig(),
-            startRepSoundId = defaultSound.resourceId,
-            startRestSoundId = defaultSound.resourceId,
-            startSetRestSoundId = defaultSound.resourceId,
-            completeSoundId = defaultSound.resourceId,
-            getReadySoundId = defaultSound.resourceId
+            getReadySound = defaultSound.displayName,
+            startRepSound = defaultSound.displayName,
+            startRestSound = defaultSound.displayName,
+            startSetRestSound = defaultSound.displayName,
+            completeSound = defaultSound.displayName,
+            config = SetupConfig(
+            )
         )
         applySetup(unsavedDefault, isUnsaved = true) // Apply temp state to UI
         selectedImage = defaultImage //  to reset the dropdown UI
@@ -264,16 +280,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun applySetup(setup: TimerSetup, isInitialLoad: Boolean = false, isUnsaved: Boolean = false) {
         configState = setup.config
-        selectedStartRepSound =
-            soundOptions.find { it.resourceId == setup.startRepSoundId } ?: defaultSound
-        selectedStartRestSound =
-            soundOptions.find { it.resourceId == setup.startRestSoundId } ?: defaultSound
-        selectedStartSetRestSound =
-            soundOptions.find { it.resourceId == setup.startSetRestSoundId } ?: defaultSound
-        selectedCompleteSound =
-            soundOptions.find { it.resourceId == setup.completeSoundId } ?: defaultSound
-        selectedGetReadySound =
-            soundOptions.find { it.resourceId == setup.getReadySoundId } ?: defaultSound
+        selectedStartRepSound = soundOptions.find { it.resourceName == setup.startRepSound } ?: defaultSound
+        selectedStartRestSound = soundOptions.find { it.resourceName == setup.startRestSound } ?: defaultSound
+        selectedStartSetRestSound = soundOptions.find { it.resourceName == setup.startSetRestSound } ?: defaultSound
+        selectedCompleteSound = soundOptions.find { it.resourceName == setup.completeSound } ?: defaultSound
+        selectedGetReadySound = soundOptions.find { it.resourceName == setup.getReadySound } ?: defaultSound
         selectedImage = imageOptions.find { it.resourceId == setup.config.imageResId } ?: defaultImage
         selectedBandColor = bandColorOptions.find { it.value == setup.config.bandColor } ?: defaultOption
         selectedWeight = weightOptions.find { it.value == setup.config.weightLbs } ?: defaultOption
@@ -311,25 +322,37 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addBandColorOption(color: String) {
         if (color.isNotBlank() && color != "N/A" && bandColorOptions.none { it.value.equals(color, ignoreCase = true) }) {
-            bandColorOptions = (bandColorOptions + SpinnerOption(color)).sortedBy { it.value }
-            saveAppState() // Save after adding
-        }
-    }
+            val newOption = SpinnerOption(color)        // 1. Add the new option to the master list
+            bandColorOptions = (bandColorOptions + newOption).sortedBy { it.value }
 
-    fun addWeightOption(weight: String) {
-        // 1. Validate the input as a Double.
-        val weightNum = weight.toDoubleOrNull()
+            // 2. Set the new option as the currently selected one for the UI
+            selectedBandColor = newOption
+            // 3. Update the central configState with the new value
+            configState = configState.copy(bandColor = newOption.value)
 
-        // 2. The 'if' condition now correctly checks if the string could be parsed as a Double.
-        //    It also checks that the exact string doesn't already exist.
-        if (weightNum != null && weightOptions.none { it.value.equals(weight, ignoreCase = true) }) {
-            // 3. Add the new option and sort the list numerically using Doubles.
-            weightOptions = (weightOptions + SpinnerOption(weight)).sortedBy { it.value.toDoubleOrNull() ?: Double.MAX_VALUE }
-
-            // 4. Save the new state.
+            // 4. Save the complete, updated state
             saveAppState()
         }
     }
+
+
+    fun addWeightOption(weight: String) {
+        val weightNum = weight.toDoubleOrNull()
+        if (weightNum != null && weightOptions.none { it.value.equals(weight, ignoreCase = true) }) {
+            val newOption = SpinnerOption(weight)
+            // 1. Add the new option to the master list
+            weightOptions = (weightOptions + newOption).sortedBy { it.value.toDoubleOrNull() ?: Double.MAX_VALUE }
+
+            // 2. Set the new option as the currently selected one for the UI
+            selectedWeight = newOption
+            // 3. Update the central configState with the new value
+            configState = configState.copy(weightLbs = newOption.value)
+
+            // 4. Save the complete, updated state
+            saveAppState()
+        }
+    }
+
 
     fun deleteBandColorOption(option: SpinnerOption) {
         if (option.value == "N/A" || bandColorOptions.none { it.value == option.value }) return
@@ -366,12 +389,26 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             // First, try to parse it as the NEW AppState format
             val appState = gson.fromJson(json, AppState::class.java)
             if (appState != null && appState.allSetups.isNotEmpty()) {
+                // 1. Load the spinner options from the imported file into the ViewModel's lists.
+                // 1. Load the spinner options by converting the imported List<String> back to List<SpinnerOption>.
+                bandColorOptions = appState.bandColorOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
+                weightOptions = appState.weightOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
+
+
+                // 2. Now that the lists are populated, load the setups.
                 _setups.value = appState.allSetups
+
+                // 3. Find the active setup from the imported file.
                 val setupToApply = appState.allSetups.find { it.name == appState.activeSetupName }
                     ?: appState.allSetups.first()
-                applySetup(setupToApply) // Applies and saves
+
+                // 4. Apply the setup. This will now work because the spinner lists have data.
+                //    We pass 'isInitialLoad = true' to prevent an immediate re-save.
+                applySetup(setupToApply, isInitialLoad = true)
+
                 return // Success, we are done
             }
+
         } catch (_: Exception) {
             // It failed, so it might be the OLD format. We'll log it and try the old way.
             Log.d("ImportSetups", "Could not parse as AppState, trying legacy format.")
@@ -379,7 +416,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
         try {
             // Second, try to parse it as the OLD List<TimerSetup> format
-            val setupListType = object : com.google.gson.reflect.TypeToken<List<TimerSetup>>() {}.type
+            val setupListType = object : TypeToken<List<TimerSetup>>() {}.type
             val legacySetups: List<TimerSetup>? = gson.fromJson(json, setupListType)
 
             if (!legacySetups.isNullOrEmpty()) {
@@ -396,7 +433,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         try {
             val currentState = AppState(
                 allSetups = _setups.value,
-                activeSetupName = this.activeSetup?.name
+                activeSetupName = this.activeSetup?.name,
+                bandColorOptions = bandColorOptions.map { it.value },
+                weightOptions = weightOptions.map { it.value }
             )
             val json = gson.toJson(currentState)
             context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
@@ -473,7 +512,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun runStateMachine(isResuming: Boolean = false) {
         var resuming = isResuming
-        while (coroutineContext.isActive) {
+        while (viewModelScope.isActive) {
             when (val state = currentState) {
                 is TimerState.Exercising -> {
                     _timerScreenState.update {
@@ -572,10 +611,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             while (remainingMillis > 0) {
                 // This is the cooperative pause loop.
                 while (currentState is TimerState.Paused) {
-                    coroutineContext.ensureActive() // Allow cancellation
+                    viewModelScope.ensureActive() // Allow cancellation
                     delay(50) // Wait patiently
                 }
-                coroutineContext.ensureActive()
+                viewModelScope.ensureActive()
                 _timerScreenState.update {
                     it.copy(
                         // remainingTime is now in Millis, formatTime will handle display
@@ -591,7 +630,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // SUCCESS: The countdown finished.
-            if (coroutineContext.isActive && currentState !is TimerState.Paused) {
+            if (viewModelScope.isActive && currentState !is TimerState.Paused) {
                 currentState = when (currentState) {
                     is TimerState.ExercisingInProgress -> determineNextStateAfterExercise()
                     is TimerState.RestingInProgress -> determineNextStateAfterRest()
@@ -662,18 +701,24 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     //
     private fun initializeSounds() {
         val allSounds = mutableListOf<SoundOption>()
-        allSounds.add(SoundOption("None", -1))
+        // Add the resource name "none" to the default option
+        allSounds.add(SoundOption("None", -1, "none"))
         R.raw::class.java.fields.forEach { field ->
             try {
                 if (field.name.startsWith("$")) return@forEach
                 val resourceId = field.getInt(null)
+                // The display name is the user-friendly, formatted name
                 val displayName = field.name.replace('_', ' ').replaceFirstChar { it.titlecase() }
-                allSounds.add(SoundOption(displayName, resourceId))
+                // The resource name is the raw field name, which matches your JSON
+                val resourceName = field.name
+                // Create the SoundOption with all three properties
+                allSounds.add(SoundOption(displayName, resourceId, resourceName))
             } catch (_: Exception) {
             }
         }
         soundOptions = allSounds.sortedBy { it.displayName }
     }
+
     //
     // --- Image Initialization ---
     //

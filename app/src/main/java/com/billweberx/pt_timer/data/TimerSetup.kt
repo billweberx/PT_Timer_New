@@ -5,12 +5,12 @@ import androidx.annotation.Keep
 @Keep
 data class TimerSetup(
     val name: String,
-    val config: SetupConfig, // This correctly matches the "config": {} object in your JSON
-    val startRepSoundId: Int,
-    val startRestSoundId: Int,
-    val startSetRestSoundId: Int,
-    val completeSoundId: Int,
-    val getReadySoundId: Int
+    val config: SetupConfig,
+    val getReadySound: String = "none",
+    val startRepSound: String = "none",
+    val startRestSound: String = "none",
+    val startSetRestSound: String = "none",
+    val completeSound: String = "none"
 )
 
 @Keep

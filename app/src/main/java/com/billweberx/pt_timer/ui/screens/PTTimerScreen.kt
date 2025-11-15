@@ -76,9 +76,8 @@ fun PTTimerScreen(
     val hasTotalTime = (viewModel.configState.totalTime.toDoubleOrNull()?.toInt() ?: 0) > 0
 
     val isRepsModeValid = hasReps && hasSets
-    val isTimeModeValid = hasTotalTime
     val isReadyToStart = timerState.status == "Ready"
-    val isStartEnabled = isReadyToStart && (isRepsModeValid || isTimeModeValid)
+    val isStartEnabled = isReadyToStart && (isRepsModeValid || hasTotalTime)
     val isRunning by remember { derivedStateOf { timerState.status != "Ready" && timerState.status != "Finished" } }
 
     Column(

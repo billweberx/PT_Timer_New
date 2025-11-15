@@ -11,5 +11,6 @@ package com.billweberx.pt_timer
  */
 data class SoundOption(
     val displayName: String,
-    val resourceId: Int
+    val resourceId: Int,
+    val resourceName: String
 )

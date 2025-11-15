@@ -19,3 +19,22 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+    # --- GSON Rules for PT Timer Data Classes ---
+
+    # Keep the AppState class and its members
+    -keep class com.billweberx.pt_timer.data.AppState { *; }
+
+    # Keep the TimerSetup class and its members
+    -keep class com.billweberx.pt_timer.data.TimerSetup { *; }
+
+    # Keep the SetupConfig class and its members
+    -keep class com.billweberx.pt_timer.data.SetupConfig { *; }
+
+    # Keep the SpinnerOption class and its members
+    -keep class com.billweberx.pt_timer.data.SpinnerOption { *; }
+
+    # Keep the default, no-argument constructor for GSON's reflection
+    -keepclassmembers class * {
+        public <init>();
+    }
