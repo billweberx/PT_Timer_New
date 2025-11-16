@@ -52,7 +52,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     val timerScreenState = _timerScreenState.asStateFlow()
     var imageOptions by mutableStateOf<List<ImageOption>>(emptyList())
         private set
-    var selectedImage by mutableStateOf<ImageOption?>(null)
+    var selectedImage by mutableStateOf(defaultImage)
     val defaultImage: ImageOption
         get() = imageOptions.firstOrNull { it.resourceId == 0 } ?: ImageOption("None", 0, "none")
 
@@ -232,7 +232,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun addOrUpdateSetup(name: String) {
         if (name.isBlank()) return
         val newConfig = configState.copy(
-            imageResName = selectedImage?.resourceName ?: "none",
+            imageResName = selectedImage.resourceName,
             bandColor = selectedBandColor.value,
             weightLbs = selectedWeight.value,
         )
@@ -299,7 +299,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         selectedStartSetRestSound = soundOptions.find { it.resourceName == setup.startSetRestSound } ?: defaultSound
         selectedCompleteSound = soundOptions.find { it.resourceName == setup.completeSound } ?: defaultSound
         selectedGetReadySound = soundOptions.find { it.resourceName == setup.getReadySound } ?: defaultSound
-        selectedImage = imageOptions.find { it.resourceId == setup.config.imageResId } ?: defaultImage
+        selectedImage = imageOptions.find { it.resourceName == setup.config.imageResName } ?: defaultImage
         selectedBandColor = bandColorOptions.find { it.value == setup.config.bandColor } ?: defaultOption
         selectedWeight = weightOptions.find { it.value == setup.config.weightLbs } ?: defaultOption
         activeSetupName = setup.name

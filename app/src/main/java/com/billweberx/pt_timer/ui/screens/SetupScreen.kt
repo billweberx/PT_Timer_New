@@ -218,8 +218,13 @@ fun SetupScreen(
             ImageDropdown(
                 label = "Image",
                 options = viewModel.imageOptions,
-                selectedOption = viewModel.selectedImage ?: viewModel.defaultImage,
-                onOptionSelected = { viewModel.selectedImage = it }
+                selectedOption = viewModel.selectedImage,
+                onOptionSelected = { newSelection ->
+                    //1. Update the UI state so the spinner shows the new selection
+                    viewModel.selectedImage = newSelection
+                    // 2. Update the central configState with the resourceName so the change will be saved
+                    viewModel.configState = viewModel.configState.copy(imageResName = newSelection.resourceName)
+                }
             )
             Spacer(modifier = Modifier.height(2.dp))
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -741,7 +746,7 @@ fun ImageDropdown(
     onOptionSelected: (ImageOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var (isExpanded, setExpanded) = remember { mutableStateOf(false) }
+    val (isExpanded, setExpanded) = remember { mutableStateOf(false) }
    // var isExpanded by remember { mutableStateOf(false) }
         ExposedDropdownMenuBox(
             expanded = isExpanded,
@@ -762,14 +767,14 @@ fun ImageDropdown(
             )
             ExposedDropdownMenu(
                 expanded = isExpanded,
-                onDismissRequest = { isExpanded = false }
+                onDismissRequest = { setExpanded(false) }
             ) {
                 options.forEach { option ->
                     DropdownMenuItem(
                         text = { Text(option.name) },
                         onClick = {
                             onOptionSelected(option)
-                            isExpanded = false
+                            setExpanded(false)
                         }
                     )
                 }
