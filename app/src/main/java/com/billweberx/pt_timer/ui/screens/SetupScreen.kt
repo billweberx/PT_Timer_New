@@ -1,5 +1,6 @@
 package com.billweberx.pt_timer.ui.screens
 
+import android.annotation.SuppressLint
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -80,8 +81,10 @@ import com.billweberx.pt_timer.TimerViewModel
 import com.billweberx.pt_timer.data.ImageOption
 import com.billweberx.pt_timer.data.SpinnerOption
 import com.billweberx.pt_timer.pressable
+import com.billweberx.pt_timer.R
 
 
+@SuppressLint("LocalContextResourcesRead", "DiscouragedApi")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupScreen(
@@ -638,17 +641,24 @@ fun SetupScreen(
             //
             // Exercise Image
             //
-            val imageId = viewModel.configState.imageResId // Get the nullable Int?
-            if (imageId != null && imageId != 0) { // Check for both null and 0
-                // Inside this 'if', the compiler 'smart casts' imageId to a non-nullable Int
-                val painter = painterResource(id = imageId)
+            val context = LocalContext.current // Obtain the context within the Composable
+            // Dynamically get the drawable ID from the resourceName.
+            val imageResourceId = context.resources.getIdentifier(
+                viewModel.selectedImage.resourceName, // The resource name (e.g., "dowel_assisted_overhead_reach")
+                "drawable", // The type of resource
+                context.packageName // The package name
+            )
+
+            // ONLY display the Image composable if a valid (non-zero) resource ID is found.
+            if (imageResourceId != 0) {
+                val painter = painterResource(id = imageResourceId)
                 Image(
                     painter = painter,
-                    contentDescription = "Exercise Image: ${viewModel.activeSetup?.name}",
+                    contentDescription = "Exercise Image: ${viewModel.selectedImage.name}",
                     modifier = Modifier
-                        .fillMaxWidth() // 1. Force the width to match the screen.
-                        .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height), // 2. Force height based on aspect ratio.
-                    contentScale = ContentScale.FillWidth // 3. Ensure the image scales correctly to the new bounds.
+                        .fillMaxWidth()
+                        .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height),
+                    contentScale = ContentScale.FillWidth
                 )
             }
             OutlinedTextField(

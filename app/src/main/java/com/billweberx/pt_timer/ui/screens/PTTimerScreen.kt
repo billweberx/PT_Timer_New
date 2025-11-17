@@ -1,5 +1,6 @@
 package com.billweberx.pt_timer.ui.screens // Make sure this line is at the very top
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -45,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +57,7 @@ import com.billweberx.pt_timer.TimerViewModel
 import com.billweberx.pt_timer.pressable
 
 
+@SuppressLint("LocalContextResourcesRead", "DiscouragedApi")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PTTimerScreen(
@@ -63,6 +66,7 @@ fun PTTimerScreen(
 ) {
 
     // State from ViewModel
+    val context = LocalContext.current
     val timerState by viewModel.timerScreenState.collectAsStateWithLifecycle()
     val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
     var isSetupDropdownExpanded by remember { mutableStateOf(false) }
@@ -438,13 +442,18 @@ fun PTTimerScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp) // Adds space between items
                 ) {
                     // 1. Display the image FIRST, if it exists.
-                    val imageId = viewModel.configState.imageResId // Get the nullable Int?
-                    if (imageId != null && imageId != 0) { // Check for both null and 0
-                        // Inside this 'if', the compiler 'smart casts' imageId to a non-nullable Int
-                        val painter = painterResource(id = imageId)
+                    val imageResourceId = context.resources.getIdentifier(
+                        viewModel.selectedImage.resourceName, // The resource name (e.g., "dowel_assisted_overhead_reach")
+                        "drawable", // The type of resource
+                        context.packageName // The package name
+                    )
+
+                    // ONLY display the Image composable if a valid (non-zero) resource ID is found.
+                    if (imageResourceId != 0) {
+                        val painter = painterResource(id = imageResourceId)
                         Image(
                             painter = painter,
-                            contentDescription = "Exercise Image: ${viewModel.activeSetup?.name}",
+                            contentDescription = "Exercise Image: ${viewModel.selectedImage.name}", // Use selectedImage.name for accurate content description
                             modifier = Modifier
                                 .fillMaxWidth() // Force the width to match the screen.
                                 .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height), // Force height based on aspect ratio.
@@ -463,7 +472,6 @@ fun PTTimerScreen(
                     )
                 }  // column
             }  // AnimatedVisibility block
-
         }
     }  // <-- This is the closing brace of the main Column
 }
