@@ -47,6 +47,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 
@@ -81,8 +82,8 @@ import com.billweberx.pt_timer.TimerViewModel
 import com.billweberx.pt_timer.data.ImageOption
 import com.billweberx.pt_timer.data.SpinnerOption
 import com.billweberx.pt_timer.pressable
-import com.billweberx.pt_timer.R
 
+import androidx.compose.material3.ButtonDefaults
 
 @SuppressLint("LocalContextResourcesRead", "DiscouragedApi")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,6 +100,11 @@ fun SetupScreen(
     val toastMessage by viewModel.toastMessage.collectAsState()
     val exerciseTimeFocusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    var isTimerConfigExpanded by remember { mutableStateOf(false) }
+    var isSoundConfigExpanded by remember { mutableStateOf(false) }
+    var isExerciseConfigExpanded by remember { mutableStateOf(false) }
+    var isExerciseInstructionsExpanded by remember { mutableStateOf(false) }
+
 
     LaunchedEffect(toastMessage) {
         toastMessage?.let { message ->
@@ -147,7 +153,11 @@ fun SetupScreen(
             // --- 2. MOVE: The top bar content is now here, fixed at the top ---
             TopAppBar(
                 title = {
-                    Text("Settings", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                    Text(
+                        "Settings",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
                 },
                 navigationIcon = {
                     Row(
@@ -185,136 +195,342 @@ fun SetupScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // --- Rows 2-7: Sound Selections ---
-            SoundDropdown(
-                label = "Get Ready",
-                soundOptions = viewModel.soundOptions,
-                selectedSound = viewModel.selectedGetReadySound,
-                onSoundSelected = { viewModel.selectedGetReadySound = it }
-            )
-            SoundDropdown(
-                label = "Start Reps",
-                soundOptions = viewModel.soundOptions,
-                selectedSound = viewModel.selectedStartRepSound,
-                onSoundSelected = { viewModel.selectedStartRepSound = it }
-            )
-            SoundDropdown(
-                label = "Start Rest",
-                soundOptions = viewModel.soundOptions,
-                selectedSound = viewModel.selectedStartRestSound,
-                onSoundSelected = { viewModel.selectedStartRestSound = it }
-            )
-            SoundDropdown(
-                label = "Start Set Rest",
-                soundOptions = viewModel.soundOptions,
-                selectedSound = viewModel.selectedStartSetRestSound,
-                onSoundSelected = { viewModel.selectedStartSetRestSound = it }
-            )
-            SoundDropdown(
-                label = "Sets Complete",
-                soundOptions = viewModel.soundOptions,
-                selectedSound = viewModel.selectedCompleteSound,
-                onSoundSelected = { viewModel.selectedCompleteSound = it }
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            ImageDropdown(
-                label = "Image",
-                options = viewModel.imageOptions,
-                selectedOption = viewModel.selectedImage,
-                onOptionSelected = { newSelection ->
-                    //1. Update the UI state so the spinner shows the new selection
-                    viewModel.selectedImage = newSelection
-                    // 2. Update the central configState with the resourceName so the change will be saved
-                    viewModel.configState = viewModel.configState.copy(imageResName = newSelection.resourceName)
-                }
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            //
-            // ---  Band Color and Weight Selections ---
-            //
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.Top
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        isSoundConfigExpanded = !isSoundConfigExpanded
+                    } // Toggle the state on click
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                EditableDropdown(
-                    label = "Band Color",
-                    options = viewModel.bandColorOptions,
-                    selectedOption = viewModel.selectedBandColor,
-                    onOptionSelected = { newSelection ->
-                        // 1. Update the UI state so the spinner shows the new selection
-                        viewModel.selectedBandColor = newSelection
-                        // 2. Update the central configState so the change will be saved
-                        viewModel.configState = viewModel.configState.copy(bandColor = newSelection.value)
-                    },
-                    onAddOption = { viewModel.addBandColorOption(it) },
-                    onDeleteOption = { viewModel.deleteBandColorOption(it) },
-                    modifier = Modifier.weight(1f)
+                Text(
+                    text = "Sound Configuration",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f) // Take up available space
                 )
-                EditableDropdown(
-                    label = "Weight-lbs",
-                    options = viewModel.weightOptions,
-                    selectedOption = viewModel.selectedWeight,
-                    onOptionSelected = { newSelection ->
-                        // 1. Update the UI state
-                        viewModel.selectedWeight = newSelection
-                        // 2. Update the central configState so the change will be saved
-                        viewModel.configState = viewModel.configState.copy(weightLbs = newSelection.value)
-                    },
-                    onAddOption = {
-                        viewModel.addWeightOption(it)
-                        viewModel.selectedWeight = SpinnerOption(it)
-                    },
-                    onDeleteOption = { viewModel.deleteWeightOption(it) },
-                    keyboardType = KeyboardType.Decimal,
-                    modifier = Modifier.weight(1f)
+                // This icon will rotate based on the expanded state
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isSoundConfigExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(if (isSoundConfigExpanded) 180f else 0f) // Animate rotation
                 )
+            }
+            AnimatedVisibility(visible = isSoundConfigExpanded) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+                    // --- Rows 2-7: Sound Selections ---
+                    SoundDropdown(
+                        label = "Get Ready",
+                        soundOptions = viewModel.soundOptions,
+                        selectedSound = viewModel.selectedGetReadySound,
+                        onSoundSelected = { viewModel.selectedGetReadySound = it }
+                    )
+                    SoundDropdown(
+                        label = "Start Reps",
+                        soundOptions = viewModel.soundOptions,
+                        selectedSound = viewModel.selectedStartRepSound,
+                        onSoundSelected = { viewModel.selectedStartRepSound = it }
+                    )
+                    SoundDropdown(
+                        label = "Start Rest",
+                        soundOptions = viewModel.soundOptions,
+                        selectedSound = viewModel.selectedStartRestSound,
+                        onSoundSelected = { viewModel.selectedStartRestSound = it }
+                    )
+                    SoundDropdown(
+                        label = "Start Set Rest",
+                        soundOptions = viewModel.soundOptions,
+                        selectedSound = viewModel.selectedStartSetRestSound,
+                        onSoundSelected = { viewModel.selectedStartSetRestSound = it }
+                    )
+                    SoundDropdown(
+                        label = "Sets Complete",
+                        soundOptions = viewModel.soundOptions,
+                        selectedSound = viewModel.selectedCompleteSound,
+                        onSoundSelected = { viewModel.selectedCompleteSound = it }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        isExerciseConfigExpanded = !isExerciseConfigExpanded
+                    } // Toggle the state on click
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Exercise Configuration",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f) // Take up available space
+                )
+                // This icon will rotate based on the expanded state
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isExerciseConfigExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(if (isExerciseConfigExpanded) 180f else 0f) // Animate rotation
+                )
+            }
+            AnimatedVisibility(visible = isExerciseConfigExpanded) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+                    ImageDropdown(
+                        label = "Image",
+                        options = viewModel.imageOptions,
+                        selectedOption = viewModel.selectedImage,
+                        onOptionSelected = { newSelection ->
+                            //1. Update the UI state so the spinner shows the new selection
+                            viewModel.selectedImage = newSelection
+                            // 2. Update the central configState with the resourceName so the change will be saved
+                            viewModel.configState =
+                                viewModel.configState.copy(imageResName = newSelection.resourceName)
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    //
+                    // ---  Band Color and Weight Selections ---
+                    //
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        EditableDropdown(
+                            label = "Band Color",
+                            options = viewModel.bandColorOptions,
+                            selectedOption = viewModel.selectedBandColor,
+                            onOptionSelected = { newSelection ->
+                                // 1. Update the UI state so the spinner shows the new selection
+                                viewModel.selectedBandColor = newSelection
+                                // 2. Update the central configState so the change will be saved
+                                viewModel.configState =
+                                    viewModel.configState.copy(bandColor = newSelection.value)
+                            },
+                            onAddOption = { viewModel.addBandColorOption(it) },
+                            onDeleteOption = { viewModel.deleteBandColorOption(it) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        //
+                        // Weight-lbs
+                        //
+                        EditableDropdown(
+                            label = "Weight-lbs",
+                            options = viewModel.weightOptions,
+                            selectedOption = viewModel.selectedWeight,
+                            onOptionSelected = { newSelection ->
+                                // 1. Update the UI state
+                                viewModel.selectedWeight = newSelection
+                                // 2. Update the central configState so the change will be saved
+                                viewModel.configState =
+                                    viewModel.configState.copy(weightLbs = newSelection.value)
+                            },
+                            onAddOption = {
+                                viewModel.addWeightOption(it)
+                                viewModel.selectedWeight = SpinnerOption(it)
+                            },
+                            onDeleteOption = { viewModel.deleteWeightOption(it) },
+                            keyboardType = KeyboardType.Decimal,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    // --- Times per day and Times per week settings ---
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Times per Day
+                        OutlinedTextField(
+                            value = viewModel.configState.timesPerDay,
+                            onValueChange = { newValue ->
+                                // Allow only digits and ensure it's a positive integer if not empty
+                                if (newValue.all { it.isDigit() }) {
+                                    val num = newValue.toIntOrNull()
+                                    if (num == null || num > 0) { // Allow empty or positive
+                                        viewModel.onConfigChange(
+                                            viewModel.configState.copy(
+                                                timesPerDay = newValue
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                            label = { Text("Times per Day") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // Times per Week
+                        OutlinedTextField(
+                            value = viewModel.configState.timesPerWeek,
+                            onValueChange = { newValue ->
+                                // Allow only digits
+                                if (newValue.all { it.isDigit() }) {
+                                    val num = newValue.toIntOrNull()
+                                    // Allow empty string, or numbers between 1 and 7
+                                    if (newValue.isEmpty() || (num != null && num in 1..7)) {
+                                        viewModel.onConfigChange(
+                                            viewModel.configState.copy(
+                                                timesPerWeek = newValue
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                            label = { Text("Times per Week") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(2.dp))
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            // --- Times per day and Times per week settings ---
+            // --- Rows 9-10: Input Fields ---
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        isTimerConfigExpanded = !isTimerConfigExpanded
+                    } // Toggle the state on click
+                    .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Times per Day
-                OutlinedTextField(
-                    value = viewModel.configState.timesPerDay,
-                    onValueChange = { newValue ->
-                        // Allow only digits and ensure it's a positive integer if not empty
-                        if (newValue.all { it.isDigit() }) {
-                            val num = newValue.toIntOrNull()
-                            if (num == null || num > 0) { // Allow empty or positive
-                                viewModel.onConfigChange(viewModel.configState.copy(timesPerDay = newValue))
-                            }
-                        }
-                    },
-                    label = { Text("Times per Day") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
+                Text(
+                    text = "Timer Configuration",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f) // Take up available space
                 )
+                // This icon will rotate based on the expanded state
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isTimerConfigExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(if (isTimerConfigExpanded) 180f else 0f) // Animate rotation
+                )
+            }
+            AnimatedVisibility(visible = isTimerConfigExpanded) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Corrected "Move To" call
+                        TimerInputField(
+                            label = "Move To",
+                            textValue = viewModel.configState.moveToTime,
+                            onTextChange = { newTextValue ->
+                                // This regex allows for a valid decimal number (e.g., "30", "30.5", "30.")
+                                if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                                    viewModel.onConfigChange(viewModel.configState.copy(moveToTime = newTextValue))
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TimerInputField(
+                            label = "Exercise",
+                            textValue = viewModel.configState.exerciseTime,
+                            onTextChange = { newTextValue ->
+                                if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                                    viewModel.onConfigChange(viewModel.configState.copy(exerciseTime = newTextValue))
+                                }
+                            },
+                            focusRequester = exerciseTimeFocusRequester, // Link the requester
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { focusState ->
+                                    if (!focusState.isFocused) {
+                                        // When we lose focus, validate.
+                                        if (!viewModel.validateExerciseTime()) {
+                                            // If validation fails, launch a coroutine on the correct scope.
+                                            // This is now unambiguous and will work correctly.
+                                            scope.coroutineLaunch {
+                                                exerciseTimeFocusRequester.requestFocus()
+                                            }
+                                        }
+                                    }
+                                }
+                        )
+                        TimerInputField(
+                            label = "Move From",
+                            textValue = viewModel.configState.moveFromTime,
+                            onTextChange = { newTextValue ->
+                                if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                                    viewModel.onConfigChange(viewModel.configState.copy(moveFromTime = newTextValue))
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
 
-                // Times per Week
-                OutlinedTextField(
-                    value = viewModel.configState.timesPerWeek,
-                    onValueChange = { newValue ->
-                        // Allow only digits
-                        if (newValue.all { it.isDigit() }) {
-                            val num = newValue.toIntOrNull()
-                            // Allow empty string, or numbers between 1 and 7
-                            if (newValue.isEmpty() || (num != null && num in 1..7)) {
-                                viewModel.onConfigChange(viewModel.configState.copy(timesPerWeek = newValue))
-                            }
-                        }
-                    },
-                    label = { Text("Times per Week") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
-                )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TimerInputField(
+                            label = "Rest",
+                            textValue = viewModel.configState.restTime,
+                            onTextChange = { newTextValue ->
+                                if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                                    viewModel.onConfigChange(viewModel.configState.copy(restTime = newTextValue))
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+
+
+                        TimerInputField(
+                            label = "Reps",
+                            textValue = viewModel.configState.reps,
+                            onTextChange = { newTextValue ->
+                                viewModel.onConfigChange(viewModel.configState.copy(reps = newTextValue))
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TimerInputField(
+                            label = "Total Time",
+                            textValue = viewModel.configState.totalTime,
+                            onTextChange = { newTextValue ->
+                                if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                                    viewModel.onConfigChange(viewModel.configState.copy(totalTime = newTextValue))
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TimerInputField(
+                            label = "Get Ready",
+                            textValue = viewModel.configState.getReadyTime,
+                            onTextChange = { newTextValue ->
+                                viewModel.onConfigChange(viewModel.configState.copy(getReadyTime = newTextValue))
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TimerInputField(
+                            label = "Sets",
+                            textValue = viewModel.configState.sets,
+                            onTextChange = { newTextValue ->
+                                viewModel.onConfigChange(viewModel.configState.copy(sets = newTextValue))
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TimerInputField(
+                            label = "Set Rest",
+                            textValue = viewModel.configState.setRestTime,
+                            onTextChange = { newTextValue ->
+                                if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
+                                    viewModel.onConfigChange(viewModel.configState.copy(setRestTime = newTextValue))
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(2.dp))
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -327,7 +543,7 @@ fun SetupScreen(
                     .clickable {
                         isManageSetupsExpanded = !isManageSetupsExpanded
                     } // Toggle the state on click
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -344,6 +560,49 @@ fun SetupScreen(
             }
             AnimatedVisibility(visible = isManageSetupsExpanded) {
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
+
+                    //
+                    // Bundle Selector
+                    //
+                    ExposedDropdownMenuBox(
+                        expanded = viewModel.isBundleDropdownExpanded,
+                        onExpandedChange = {
+                            viewModel.isBundleDropdownExpanded = it
+                        }, // Always allow expanding/collapsing
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = viewModel.selectedBundle?.name ?: "Select a Bundle",
+                            onValueChange = { /* Read-only */ },
+                            readOnly = true,
+                            label = { Text("Load Bundle") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = viewModel.isBundleDropdownExpanded) },
+                            modifier = Modifier
+                                .menuAnchor(
+                                    type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                                    enabled = true // <-- ALWAYS ENABLE THE DROPDOWN
+                                )
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = viewModel.isBundleDropdownExpanded,
+                            onDismissRequest = { viewModel.isBundleDropdownExpanded = false }
+                        ) {
+                            viewModel.bundleOptions.forEach { bundle ->
+                                DropdownMenuItem(
+                                    text = { Text(bundle.name) },
+                                    onClick = {
+                                        viewModel.isBundleDropdownExpanded =
+                                            false // Close dropdown first
+                                        viewModel.showLoadBundleOptionsOrPerformReplace(bundle) // This will set selectedBundle
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+
+
                     if (loadedSetups.isEmpty()) {
                         Text(
                             "No saved exercises yet.",
@@ -412,276 +671,199 @@ fun SetupScreen(
                             }
                         }
                     }
-                }
-            }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            Spacer(modifier = Modifier.height(4.dp))
+                    // --- Row 12: New Setup Name Field ---
+                    OutlinedTextField(
+                        value = newSetupName,
+                        onValueChange = { newSetupName = it },
+                        label = { Text("New Exercise Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
 
-            // --- Rows 9-10: Input Fields ---
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Corrected "Move To" call
-                TimerInputField(
-                    label = "Move To",
-                    textValue = viewModel.configState.moveToTime,
-                    onTextChange = { newTextValue ->
-                        // This regex allows for a valid decimal number (e.g., "30", "30.5", "30.")
-                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
-                            viewModel.onConfigChange(viewModel.configState.copy(moveToTime = newTextValue))
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                TimerInputField(label = "Exercise",
-                    textValue = viewModel.configState.exerciseTime,
-                    onTextChange = { newTextValue ->
-                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
-                            viewModel.onConfigChange(viewModel.configState.copy(exerciseTime = newTextValue))
-                        }
-                    },
-                    focusRequester = exerciseTimeFocusRequester, // Link the requester
-                    modifier = Modifier
-                        .weight(1f)
-                        .onFocusChanged { focusState ->
-                            if (!focusState.isFocused) {
-                                // When we lose focus, validate.
-                                if (!viewModel.validateExerciseTime()) {
-                                    // If validation fails, launch a coroutine on the correct scope.
-                                    // This is now unambiguous and will work correctly.
-                                    scope.coroutineLaunch {
-                                        exerciseTimeFocusRequester.requestFocus()
-                                    }
-                                }
+                    Spacer(modifier = Modifier.height(20.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Row with the first Two buttons, using Surface
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(
+                            16.dp,
+                            Alignment.CenterHorizontally
+                        ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // --- Save Exercise Button ---
+                        val saveInteractionSource = remember { MutableInteractionSource() }
+                        val saveButtonEnabled = newSetupName.isNotBlank()
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (saveButtonEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (saveButtonEnabled) MaterialTheme.colorScheme.onPrimary else Color.Gray,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = saveInteractionSource,
+                                enabled = saveButtonEnabled,
+                                onClick = { viewModel.addOrUpdateSetup(name = newSetupName) }
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                            ) {
+                                Text("Save\nExercise", textAlign = TextAlign.Center)
                             }
                         }
-                )
-                TimerInputField(
-                    label = "Move From",
-                    textValue = viewModel.configState.moveFromTime,
-                    onTextChange = { newTextValue ->
-                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
-                            viewModel.onConfigChange(viewModel.configState.copy(moveFromTime = newTextValue))
+
+                        // --- Clear Setup Button ---
+                        val clearInteractionSource = remember { MutableInteractionSource() }
+                        val clearButtonEnabled = loadedSetups.isNotEmpty()
+                        Surface(
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            color = if (clearButtonEnabled) Color(0xFFFFCDD2) else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (clearButtonEnabled) Color.Black else Color.Gray,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = clearInteractionSource,
+                                enabled = clearButtonEnabled,
+                                onClick = { setShowClearConfirmDialog(true) }
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                            ) {
+                                Text("Clear\nSetup", textAlign = TextAlign.Center)
+                            }
                         }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TimerInputField(
-                    label = "Rest",
-                    textValue = viewModel.configState.restTime,
-                    onTextChange = { newTextValue ->
-                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
-                            viewModel.onConfigChange(viewModel.configState.copy(restTime = newTextValue))
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-
-
-                TimerInputField(
-                    label = "Reps",
-                    textValue = viewModel.configState.reps,
-                    onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(reps = newTextValue))
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                TimerInputField(
-                    label = "Total Time",
-                    textValue = viewModel.configState.totalTime,
-                    onTextChange = { newTextValue ->
-                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
-                            viewModel.onConfigChange(viewModel.configState.copy(totalTime = newTextValue))
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TimerInputField(
-                    label = "Get Ready",
-                    textValue = viewModel.configState.getReadyTime,
-                    onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(getReadyTime = newTextValue))
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                TimerInputField(
-                    label = "Sets",
-                    textValue = viewModel.configState.sets,
-                    onTextChange = { newTextValue ->
-                        viewModel.onConfigChange(viewModel.configState.copy(sets = newTextValue))
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                TimerInputField(
-                    label = "Set Rest",
-                    textValue = viewModel.configState.setRestTime,
-                    onTextChange = { newTextValue ->
-                        if (newTextValue.matches(Regex("^\\d*\\.?\\d?$"))) {
-                            viewModel.onConfigChange(viewModel.configState.copy(setRestTime = newTextValue))
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            // --- Row 12: New Setup Name Field ---
-            OutlinedTextField(
-                value = newSetupName,
-                onValueChange = { newSetupName = it },
-                label = { Text("New Exercise Name") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // Row with the first Two buttons, using Surface
-            Row(modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // --- Save Exercise Button ---
-                val saveInteractionSource = remember { MutableInteractionSource() }
-                val saveButtonEnabled = newSetupName.isNotBlank()
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (saveButtonEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (saveButtonEnabled) MaterialTheme.colorScheme.onPrimary else Color.Gray,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.pressable(
-                        interactionSource = saveInteractionSource,
-                        enabled = saveButtonEnabled,
-                        onClick = { viewModel.addOrUpdateSetup(name = newSetupName) }
-                    )
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                    ) {
-                        Text("Save\nExercise", textAlign = TextAlign.Center)
                     }
-                }
 
-                // --- Clear Setup Button ---
-                val clearInteractionSource = remember { MutableInteractionSource() }
-                val clearButtonEnabled = loadedSetups.isNotEmpty()
-                Surface(
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                    color = if (clearButtonEnabled) Color(0xFFFFCDD2) else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (clearButtonEnabled) Color.Black else Color.Gray,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.pressable(
-                        interactionSource = clearInteractionSource,
-                        enabled = clearButtonEnabled,
-                        onClick = { setShowClearConfirmDialog(true) }
-                    )
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    // --- Row 14: Import/Export Buttons ---
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(
+                            16.dp,
+                            Alignment.CenterHorizontally
+                        )
                     ) {
-                        Text("Clear\nSetup", textAlign = TextAlign.Center)
+                        // --- Import Button ---
+                        val importInteractionSource = remember { MutableInteractionSource() }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.tertiary,
+                            contentColor = MaterialTheme.colorScheme.onTertiary,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = importInteractionSource,
+                                onClick = { importLauncher.launch("application/json") }
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                            ) {
+                                Text("Import")
+                            }
+                        }
+
+                        // --- Export Button ---
+                        val exportInteractionSource = remember { MutableInteractionSource() }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.tertiary,
+                            contentColor = MaterialTheme.colorScheme.onTertiary,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = exportInteractionSource,
+                                onClick = { saveLauncher.launch("PT_Timer_Setups.json") }
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                            ) {
+                                Text("Export")
+                            }
+                        }
                     }
+
+
                 }
             }
 
-            // --- Row 14: Import/Export Buttons ---
+            Spacer(modifier = Modifier.height(20.dp))
+
+            //
+            // Exercise Instructions
+            //
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+                    .clickable {
+                        isExerciseInstructionsExpanded = !isExerciseInstructionsExpanded
+                    } // Toggle the state on click
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // --- Import Button ---
-                val importInteractionSource = remember { MutableInteractionSource() }
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.tertiary,
-                    contentColor = MaterialTheme.colorScheme.onTertiary,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.pressable(
-                        interactionSource = importInteractionSource,
-                        onClick = { importLauncher.launch("application/json") }
-                    )
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
-                    ) {
-                        Text("Import")
-                    }
-                }
-
-                // --- Export Button ---
-                val exportInteractionSource = remember { MutableInteractionSource() }
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.tertiary,
-                    contentColor = MaterialTheme.colorScheme.onTertiary,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.pressable(
-                        interactionSource = exportInteractionSource,
-                        onClick = { saveLauncher.launch("PT_Timer_Setups.json") }
-                    )
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
-                    ) {
-                        Text("Export")
-                    }
-                }
-            }
-            //
-            // Exercise Image
-            //
-            val context = LocalContext.current // Obtain the context within the Composable
-            // Dynamically get the drawable ID from the resourceName.
-            val imageResourceId = context.resources.getIdentifier(
-                viewModel.selectedImage.resourceName, // The resource name (e.g., "dowel_assisted_overhead_reach")
-                "drawable", // The type of resource
-                context.packageName // The package name
-            )
-
-            // ONLY display the Image composable if a valid (non-zero) resource ID is found.
-            if (imageResourceId != 0) {
-                val painter = painterResource(id = imageResourceId)
-                Image(
-                    painter = painter,
-                    contentDescription = "Exercise Image: ${viewModel.selectedImage.name}",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height),
-                    contentScale = ContentScale.FillWidth
+                Text(
+                    text = "Exercise Instructions",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f) // Take up available space
+                )
+                // This icon will rotate based on the expanded state
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isExerciseInstructionsExpanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(if (isExerciseInstructionsExpanded) 180f else 0f) // Animate rotation
                 )
             }
-            OutlinedTextField(
-                value = viewModel.configState.instructions,
-                onValueChange = { newText ->// Create a copy of the current config with the new text
-                    val newConfig = viewModel.configState.copy(instructions = newText)
-                    // Call the handler in the ViewModel
-                    viewModel.onConfigChange(newConfig)
-                },
-                label = { Text("Exercise Instructions") },
-                placeholder = { Text("Enter any notes for this exercise...") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                minLines = 3
-            )
-            Spacer(modifier = Modifier.height(50.dp))
+            AnimatedVisibility(visible = isExerciseInstructionsExpanded) {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    val context = LocalContext.current // Obtain the context within the Composable
+                    // Dynamically get the drawable ID from the resourceName.
+                    val imageResourceId = context.resources.getIdentifier(
+                        viewModel.selectedImage.resourceName, // The resource name (e.g., "dowel_assisted_overhead_reach")
+                        "drawable", // The type of resource
+                        context.packageName // The package name
+                    )
+
+                    // ONLY display the Image composable if a valid (non-zero) resource ID is found.
+                    if (imageResourceId != 0) {
+                        val painter = painterResource(id = imageResourceId)
+                        Image(
+                            painter = painter,
+                            contentDescription = "Exercise Image: ${viewModel.selectedImage.name}",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height),
+                            contentScale = ContentScale.FillWidth
+                        )
+                    }
+                    OutlinedTextField(
+                        value = viewModel.configState.instructions,
+                        onValueChange = { newText ->// Create a copy of the current config with the new text
+                            val newConfig = viewModel.configState.copy(instructions = newText)
+                            // Call the handler in the ViewModel
+                            viewModel.onConfigChange(newConfig)
+                        },
+                        label = { Text("Exercise Instructions") },
+                        placeholder = { Text("Enter any notes for this exercise...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        minLines = 3
+                    )
+                    Spacer(modifier = Modifier.height(50.dp))
+                }
+            }
         }
     }
-
     if (showClearConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { setShowClearConfirmDialog(false)},
+            onDismissRequest = { setShowClearConfirmDialog(false) },
             title = { Text("Confirm Clear") },
             text = { Text("Are you sure you want to delete the entire setup list?") },
             confirmButton = {
@@ -695,6 +877,99 @@ fun SetupScreen(
             },
             dismissButton = {
                 Button(onClick = { setShowClearConfirmDialog(false) }) { Text("No") }
+            }
+        )
+    }
+    //
+    // Load Bundle Options Dialog (Merge or Replace)
+    //
+    if (viewModel.showLoadBundleOptionsDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissLoadBundleOptions() },
+            title = { Text("Load Bundle") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Instruction text
+                    Text(
+                        text = "Choose how to load '${viewModel.selectedBundle?.name ?: "Selected Bundle"}':", // <-- CHANGED TO selectedBundle
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Merge Option Button
+                    Button(
+                        onClick = {
+                            // --- VVV --- THIS IS THE FINAL, CORRECT FIX --- VVV ---
+                            // Pass the selected bundle (which is guaranteed non-null when this dialog is shown)
+                            viewModel.performBundleLoad(
+                                viewModel.selectedBundle!!,
+                                TimerViewModel.BundleLoadAction.MERGE
+                            )
+                            // --- ^^^ --- END OF THE FIX --- ^^^ ---
+                        },
+                        modifier = Modifier.fillMaxWidth(0.8f) // Make buttons take 80% width
+                    ) {
+                        Text("Merge (Add to Current)")
+                    }
+
+                    // Replace Option Button
+                    Button(
+                        onClick = {
+                            viewModel.dismissLoadBundleOptions() // Dismiss this dialog first
+                            viewModel.showReplaceConfirmation() // Show confirmation dialog next
+                        },
+                        modifier = Modifier.fillMaxWidth(0.8f), // Make buttons take 80% width
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer, // Visually distinguish "Replace"
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Text("Replace (Clear Current)")
+                    }
+                }
+            },
+            confirmButton = { // Only the Cancel button is in the dedicated button slot
+                TextButton(onClick = {
+                    viewModel.selectedBundle = null // <-- Clear selected bundle on explicit cancel
+                    viewModel.dismissLoadBundleOptions()
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    //
+    // Replace Confirmation Dialog
+    //
+    if (viewModel.showReplaceConfirmationDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissReplaceConfirmation() },
+            title = { Text("Confirm Replace") },
+            text = { Text("Are you sure you want to replace all current exercises? This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.performBundleLoad(
+                        viewModel.selectedBundle!!,
+                        TimerViewModel.BundleLoadAction.REPLACE
+                    )
+                    viewModel.dismissReplaceConfirmation()
+                }) {
+                    Text("Replace")
+                }
+            },
+            dismissButton = { // Using dismissButton for cancel
+                TextButton(onClick = {
+                    viewModel.selectedBundle = null // Clear selected bundle on explicit cancel
+                    viewModel.dismissLoadBundleOptions()
+                }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -757,39 +1032,40 @@ fun ImageDropdown(
     modifier: Modifier = Modifier
 ) {
     val (isExpanded, setExpanded) = remember { mutableStateOf(false) }
-   // var isExpanded by remember { mutableStateOf(false) }
-        ExposedDropdownMenuBox(
-            expanded = isExpanded,
-            onExpandedChange = { setExpanded(it) },
-            modifier = modifier
-        ) {
-            OutlinedTextField(
-                value = selectedOption.name,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text(label) },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isExpanded) },
-                modifier = Modifier.menuAnchor(
+    // var isExpanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = isExpanded,
+        onExpandedChange = { setExpanded(it) },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = selectedOption.name,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isExpanded) },
+            modifier = Modifier
+                .menuAnchor(
                     type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
                     enabled = true
                 )
-                    .fillMaxWidth()
-            )
-            ExposedDropdownMenu(
-                expanded = isExpanded,
-                onDismissRequest = { setExpanded(false) }
-            ) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.name) },
-                        onClick = {
-                            onOptionSelected(option)
-                            setExpanded(false)
-                        }
-                    )
-                }
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = isExpanded,
+            onDismissRequest = { setExpanded(false) }
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.name) },
+                    onClick = {
+                        onOptionSelected(option)
+                        setExpanded(false)
+                    }
+                )
             }
         }
+    }
 
 }
 
@@ -804,7 +1080,8 @@ fun TimerInputField(
     focusRequester: FocusRequester? = null,
     isNumeric: Boolean = true
 ) {
-    val keyboardType = if (isNumeric) KeyboardType.Decimal else KeyboardType.Text // Corrected to KeyboardType.Decimal
+    val keyboardType =
+        if (isNumeric) KeyboardType.Decimal else KeyboardType.Text // Corrected to KeyboardType.Decimal
     val focusManager = LocalFocusManager.current
 
     // This modifier chain is the core of the change ---

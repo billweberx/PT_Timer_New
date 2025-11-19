@@ -1,5 +1,5 @@
 {
-  "activeSetupName": "Resisted Standing Internal Rotation - right",
+  "activeSetupName": "Supported Dumbbell Row - Right",
   "allSetups": [
     {
       "completeSound": "complete",
@@ -7,6 +7,7 @@
         "bandColor": "N/A",
         "exerciseTime": "3",
         "getReadyTime": "5",
+        "imageResId": 2131165319,
         "imageResName": "dowel_assisted_overhead_reach",
         "instructions": "Starting position: begin lying on your back, holding a dowel, with your palms facing down. With control, lift the dowel overhead until you feel a comfortable stretch in your shoulders. Pause briefly, and return to the starting position.",
         "moveFromTime": "1",
@@ -18,10 +19,10 @@
         "timesPerDay": "1",
         "timesPerWeek": "7",
         "totalTime": "0.0",
-        "weightLbs": "3"
+        "weightLbs": "6"
       },
       "getReadySound": "move_to_start_position",
-      "name": "dowell- assistant overhead reach",
+      "name": "dowell- assisted overhead reach",
       "startRepSound": "start",
       "startRestSound": "rest",
       "startSetRestSound": "set_rest"
@@ -32,6 +33,33 @@
         "bandColor": "N/A",
         "exerciseTime": "3",
         "getReadyTime": "5",
+        "imageResId": 2131165321,
+        "imageResName": "dowel_assited_supine_er_at_45_right",
+        "instructions": "Begin lying on your back, holding a dowel. Position the dowel so that your right palm grips one end, with your arm bent and slightly out from your side.  Using your uninvolved arm, gently press the dowel to rotate your forearm backward until you feel a comfortable stretch in your shoulder. Pause briefly, and return to the starting position.",
+        "moveFromTime": "0.5",
+        "moveToTime": "0.5",
+        "reps": "10",
+        "restTime": "1.5",
+        "setRestTime": "15",
+        "sets": "3",
+        "timesPerDay": "1",
+        "timesPerWeek": "7",
+        "totalTime": "0.0",
+        "weightLbs": "0"
+      },
+      "getReadySound": "move_to_start_position",
+      "name": "Dowel- Assisted Supine ER at 45 - Right",
+      "startRepSound": "start",
+      "startRestSound": "rest",
+      "startSetRestSound": "set_rest"
+    },
+    {
+      "completeSound": "complete",
+      "config": {
+        "bandColor": "N/A",
+        "exerciseTime": "2",
+        "getReadyTime": "5",
+        "imageResId": 2131165427,
         "imageResName": "serratus_punch",
         "instructions": "starting position: begin lying on your right side, with your left hand resting against your hip. Keeping your elbow straight, lift your arm overhead toward the ceiling as far as comfortable. Pause briefly and return to the starting position.",
         "moveFromTime": "0.5",
@@ -43,7 +71,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "7",
         "totalTime": "0.0",
-        "weightLbs": "7"
+        "weightLbs": "6"
       },
       "getReadySound": "move_to_start_position",
       "name": "serratus punch",
@@ -57,10 +85,11 @@
         "bandColor": "N/A",
         "exerciseTime": "3",
         "getReadyTime": "5",
+        "imageResId": 2131165428,
         "imageResName": "sidelying_shoulder_abduction_right",
         "instructions": "Starting position: begin lying on your left side, with your right hand resting against your hip. Keeping your elbows straight, lift your arm overhead toward the ceiling as far as comfortable. Pause briefly and return to the starting position.",
-        "moveFromTime": "1",
-        "moveToTime": "1",
+        "moveFromTime": "0.5",
+        "moveToTime": "0.5",
         "reps": "10",
         "restTime": "1",
         "setRestTime": "15",
@@ -68,7 +97,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "1"
+        "weightLbs": "3.5"
       },
       "getReadySound": "move_to_start_position",
       "name": "sidelying shoulder abduction- right",
@@ -82,10 +111,11 @@
         "bandColor": "N/A",
         "exerciseTime": "3",
         "getReadyTime": "5",
+        "imageResId": 2131165430,
         "imageResName": "sidelying_shoulder_er_right",
         "instructions": "Starting position: begin lying on your left side, with your right elbow bent. place a towel roll between your trunk and arm. Keeping pressure through the towel, rotate your forearm and hand up toward the ceiling. Pause briefly, then return to the starting position.",
-        "moveFromTime": "1",
-        "moveToTime": "1",
+        "moveFromTime": "0.5",
+        "moveToTime": "0.5",
         "reps": "10",
         "restTime": "1",
         "setRestTime": "15",
@@ -93,7 +123,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "1"
+        "weightLbs": "1.5"
       },
       "getReadySound": "move_to_start_position",
       "name": "sidelying shoulder ER - right",
@@ -107,6 +137,7 @@
         "bandColor": "N/A",
         "exerciseTime": "3",
         "getReadyTime": "5",
+        "imageResId": 2131165432,
         "imageResName": "sidelying_shoulder_flexion_right",
         "instructions": "Starting position: begin lying on your left side, with your right hand resting against your hip. Keeping your elbow straight, lift your arm forward and overhead as far as comfortable. pause briefly, and return to the starting position.",
         "moveFromTime": "1",
@@ -118,7 +149,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "N/A"
+        "weightLbs": "1.5"
       },
       "getReadySound": "move_to_start_position",
       "name": "sidelying shoulder flexion - right",
@@ -130,8 +161,35 @@
       "completeSound": "complete",
       "config": {
         "bandColor": "N/A",
+        "exerciseTime": "2",
+        "getReadyTime": "2",
+        "imageResId": 2131165426,
+        "imageResName": "seated_scapular_retraction",
+        "instructions": "Starting position: begin sitting in an upright position, with your arms by your side. With control, activate the muscles in your mid-back to squeeze your shoulder blades toward your spine. pause briefly, then return to the starting position.",
+        "moveFromTime": "0.5",
+        "moveToTime": "0.5",
+        "reps": "10",
+        "restTime": "1",
+        "setRestTime": "10",
+        "sets": "3",
+        "timesPerDay": "1",
+        "timesPerWeek": "7",
+        "totalTime": "0.0",
+        "weightLbs": "N/A"
+      },
+      "getReadySound": "move_to_start_position",
+      "name": "seated scapular retraction",
+      "startRepSound": "start",
+      "startRestSound": "rest",
+      "startSetRestSound": "set_rest"
+    },
+    {
+      "completeSound": "complete",
+      "config": {
+        "bandColor": "N/A",
         "exerciseTime": "3",
         "getReadyTime": "5",
+        "imageResId": 2131165323,
         "imageResName": "dowel_shoulder_extension",
         "instructions": "Starting position: begins standing, holding a dowel behind your back with both hands, palms facing toward your hips. keeping your elbows straight, slowly lift the dowel straight back until you feel a stretch in your shoulders. pause briefly, then return to the starting position.",
         "moveFromTime": "0.5",
@@ -157,34 +215,10 @@
         "bandColor": "N/A",
         "exerciseTime": "3",
         "getReadyTime": "5",
-        "imageResName": "seated_scapular_retraction",
-        "instructions": "Starting position: begin sitting in an upright position, with your arms by your side. With control, activate the muscles in your mid-back to squeeze your shoulder blades toward your spine. pause briefly, then return to the starting position.",
-        "moveFromTime": "0.5",
-        "moveToTime": "0.5",
-        "reps": "10",
-        "restTime": "1",
-        "setRestTime": "15",
-        "sets": "3",
-        "timesPerDay": "1",
-        "timesPerWeek": "7",
-        "totalTime": "0.0",
-        "weightLbs": "N/A"
-      },
-      "getReadySound": "move_to_start_position",
-      "name": "seated scapular retraction",
-      "startRepSound": "start",
-      "startRestSound": "rest",
-      "startSetRestSound": "set_rest"
-    },
-    {
-      "completeSound": "complete",
-      "config": {
-        "bandColor": "N/A",
-        "exerciseTime": "3",
-        "getReadyTime": "5",
-        "imageResName": "none",
+        "imageResId": 2131165320,
+        "imageResName": "dowel_assisted_standing_abduction_left",
         "instructions": "Starting position: begin standing in an upright position, holding a dowel, so that the palm of your right hand grips one end. Using the uninvolved arm, push the dowel sideways up toward the ceiling until you feel a comfortable stretch in your shoulder. Pause briefly and return to the starting position.",
-        "moveFromTime": "1",
+        "moveFromTime": "0.5",
         "moveToTime": "0.5",
         "reps": "10",
         "restTime": "1",
@@ -207,6 +241,7 @@
         "bandColor": "N/A",
         "exerciseTime": "3",
         "getReadyTime": "5",
+        "imageResId": 2131165440,
         "imageResName": "wall_shoulder_flexion_walk_right",
         "instructions": "Starting position: begin standing in an upright position, with your right hand on the wall in front of you. Slowly walk your hand up the wall until you feel a stretch in your shoulder. Hold briefly, then, slide your hand back down the wall with control to return to the starting position.",
         "moveFromTime": "1",
@@ -229,9 +264,10 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Green",
+        "bandColor": "Red",
         "exerciseTime": "1",
         "getReadyTime": "5",
+        "imageResId": 2131165424,
         "imageResName": "resisted_standing_row",
         "instructions": "Starting position: anchor a band to a stable surface, and hold the band in both hands. Begin facing the anchor, with your arms in front of you. With control, pull the band toward you, bending your elbows to bring your arms to your side. Pause briefly, and return to the starting position.",
         "moveFromTime": "1",
@@ -254,9 +290,10 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Green",
+        "bandColor": "Red",
         "exerciseTime": "1",
         "getReadyTime": "5",
+        "imageResId": 2131165425,
         "imageResName": "resisted_standing_shoulder_extension",
         "instructions": "Starting position: anchor a band to a door frame overhead, and hold the band in both hands. Begin facing the anchor, with your arms in front of you. Keeping your elbows straight, pull your arms backward toward your hips against the resistance. Pause briefly, then return to the starting position.",
         "moveFromTime": "1",
@@ -282,6 +319,7 @@
         "bandColor": "Blue",
         "exerciseTime": "1",
         "getReadyTime": "5",
+        "imageResId": 2131165420,
         "imageResName": "resisted_shoulder_external_rotation_right",
         "instructions": "Starting position: hold a band, anchored to a stable surface in your right hand. Begin with your left side facing the anchor, and a towel roll between your upper arm and side. Keeping your elbow bent, rotate your forearm out against the resistance of the band. Pause briefly, and return to the starting position.",
         "moveFromTime": "1",
@@ -296,7 +334,7 @@
         "weightLbs": "N/A"
       },
       "getReadySound": "move_to_start_position",
-      "name": "Resisted Shoulder External Rotation - right",
+      "name": "Resisted Shoulder External Rotation - Right",
       "startRepSound": "start",
       "startRestSound": "rest",
       "startSetRestSound": "set_rest"
@@ -307,6 +345,7 @@
         "bandColor": "Green",
         "exerciseTime": "1",
         "getReadyTime": "5",
+        "imageResId": 2131165422,
         "imageResName": "resisted_standing_internal_rotation_right",
         "instructions": "Starting position: hold a band anchored to a stable surface in your right hand. Begin with your right side facing the anchor, and a towel roll between your upper arm and side. Keeping your elbow bent, rotate your forearm in toward your midline, against the resistance of the band. Pause briefly, and return to the starting position.",
         "moveFromTime": "1",
@@ -321,7 +360,7 @@
         "weightLbs": "N/A"
       },
       "getReadySound": "move_to_start_position",
-      "name": "Resisted Standing Internal Rotation - right",
+      "name": "Resisted Standing Internal Rotation - Right",
       "startRepSound": "start",
       "startRestSound": "rest",
       "startSetRestSound": "set_rest"
@@ -332,10 +371,11 @@
         "bandColor": "N/A",
         "exerciseTime": "1",
         "getReadyTime": "5",
-        "imageResName": "supported_dumbbell_row_left",
-        "instructions": "Starting position: begin standing, holding a dumbbell in your left hand. Place your right hand on a stable surface, and hinge your upper body forward at the waist. With control, pull the dumbbell up to your side, bending your elbow. Pause briefly, then return to the starting position.",
-        "moveFromTime": "1",
-        "moveToTime": "1",
+        "imageResId": 2131165435,
+        "imageResName": "supported_dumbbell_row_right",
+        "instructions": "Starting position: begin standing, holding a dumbbell in your right hand. Place your left hand on a stable surface, and hinge your upper body forward at the waist. With control, pull the dumbbell up to your side, bending your elbow. Pause briefly, then return to the starting position.",
+        "moveFromTime": "0.5",
+        "moveToTime": "0.5",
         "reps": "10",
         "restTime": "1",
         "setRestTime": "15",
@@ -343,10 +383,10 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "8.0"
+        "weightLbs": "17"
       },
       "getReadySound": "move_to_start_position",
-      "name": "Supported Dumbbell Row - Left",
+      "name": "Supported Dumbbell Row - Right",
       "startRepSound": "start",
       "startRestSound": "rest",
       "startSetRestSound": "set_rest"
@@ -357,6 +397,7 @@
         "bandColor": "N/A",
         "exerciseTime": "1",
         "getReadyTime": "5",
+        "imageResId": 2131165434,
         "imageResName": "standing_scaption_with_dumbbells",
         "instructions": "",
         "moveFromTime": "1",
@@ -368,7 +409,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "1"
+        "weightLbs": "4"
       },
       "getReadySound": "move_to_start_position",
       "name": "Standing Scaption With Dumbbells",
@@ -382,6 +423,8 @@
         "bandColor": "N/A",
         "exerciseTime": "2",
         "getReadyTime": "5",
+        "imageResId": 0,
+        "imageResName": "dowel_shoulder_extension",
         "instructions": "",
         "moveFromTime": "1",
         "moveToTime": "1",
@@ -406,6 +449,8 @@
         "bandColor": "N/A",
         "exerciseTime": "2",
         "getReadyTime": "5",
+        "imageResId": 0,
+        "imageResName": "none",
         "instructions": "",
         "moveFromTime": "1",
         "moveToTime": "1",
@@ -425,6 +470,20 @@
       "startSetRestSound": "set_rest"
     }
   ],
-  "bandColorOptions": [],
-  "weightOptions": []
+  "bandColorOptions": [
+    "Blue",
+    "Green",
+    "N/A",
+    "Red"
+  ],
+  "weightOptions": [
+    "0",
+    "1.5",
+    "3.5",
+    "4",
+    "6",
+    "12",
+    "17",
+    "N/A"
+  ]
 }

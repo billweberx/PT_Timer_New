@@ -4,35 +4,36 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.billweberx.pt_timer.data.AppState
+import com.billweberx.pt_timer.data.BundleOption
 import com.billweberx.pt_timer.data.SetupConfig
 import com.billweberx.pt_timer.data.TimerScreenState
 import com.billweberx.pt_timer.data.TimerSetup
 import com.billweberx.pt_timer.util.AppSoundPlayer
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.Job
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.withContext
 import java.io.File
 import com.billweberx.pt_timer.data.ImageOption
 import com.billweberx.pt_timer.data.SpinnerOption
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
-
+import com.google.gson.JsonParser
 
 
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
@@ -40,7 +41,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
     private val appStateFilename = "app_state.json"
-  //  private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
+
+    //  private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     private var timerJob: Job? = null
     private var countdownJob: Job? = null
 
@@ -61,7 +63,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var soundOptions by mutableStateOf<List<SoundOption>>(emptyList())
         private set
     val defaultSound: SoundOption
-        get() = soundOptions.find { it.displayName.equals("None", ignoreCase = true) } ?: SoundOption("None", -1, "none")
+        get() = soundOptions.find { it.displayName.equals("None", ignoreCase = true) }
+            ?: SoundOption("None", -1, "none")
 
     var selectedStartRepSound by mutableStateOf(defaultSound)
     var selectedStartRestSound by mutableStateOf(defaultSound)
@@ -70,6 +73,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var selectedGetReadySound by mutableStateOf(defaultSound)
     var activeSetupName by mutableStateOf<String?>("")
     var activeSetup by mutableStateOf<TimerSetup?>(null)
+    private val _isExerciseListDirty = MutableStateFlow(false)
+    val isExerciseListDirty: StateFlow<Boolean> = _isExerciseListDirty.asStateFlow()
 
     // Timer State Machine properties
     private var currentState: TimerState = TimerState.Ready
@@ -83,17 +88,33 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var weightOptions by mutableStateOf<List<SpinnerOption>>(emptyList())
 
     var selectedWeight by mutableStateOf(SpinnerOption("N/A"))
+
+    // Bundle properties
+    var bundleOptions by mutableStateOf<List<BundleOption>>(emptyList())
+        private set
+    var selectedBundle by mutableStateOf<BundleOption?>(null) // Nullable as no bundle may be selected initially
+    var isBundleDropdownExpanded by mutableStateOf(false)
+
+    // State for managing the bundle loading process
+    var showLoadBundleOptionsDialog by mutableStateOf(false)
+        private set
+    var showReplaceConfirmationDialog by mutableStateOf(false)
+        private set
     private val gson = GsonBuilder().setPrettyPrinting().create()
 
     val defaultOption = SpinnerOption("N/A")
+
     init {
         initializeSounds()
         initializeImages()
+        initializeBundles()
         loadAppState() // Simplified initialization
     }
+
     fun onToastShown() {
         _toastMessage.value = null
     }
+
     fun onConfigChange(newConfig: SetupConfig) {    // --- Validation Logic ---
         val exerciseTime = newConfig.exerciseTime.toDoubleOrNull() // Check as a Double
         if (exerciseTime != null && exerciseTime <= 0.0) { // Compare to 0.0
@@ -105,6 +126,153 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         // --- If validation passes, update the state ---
         configState = newConfig
     }
+
+    fun dismissLoadBundleOptions() {
+        showLoadBundleOptionsDialog = false
+    }
+
+    fun showReplaceConfirmation() {
+        showReplaceConfirmationDialog = true
+    }
+
+    fun dismissReplaceConfirmation() {
+        showReplaceConfirmationDialog = false
+    }
+
+    fun performBundleLoad(
+        bundle: BundleOption,
+        action: BundleLoadAction
+    ) { // Add bundle as argument
+        // No need for `bundleToLoadForAction?.let` anymore
+        Log.d(
+            "BundleLoad",
+            "performBundleLoad called. Action: $action, Bundle: ${bundle.name}"
+        ) // Diagnostic log
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val jsonString = if (bundle.isFactory) {
+                    Log.d("BundleLoad", "Reading factory bundle from assets: ${bundle.filePath}")
+                    getApplication<Application>().assets.open(bundle.filePath).bufferedReader()
+                        .use { it.readText() }
+                } else {
+                    Log.d("BundleLoad", "Reading user bundle from file: ${bundle.filePath}")
+                    File(getApplication<Application>().filesDir, bundle.filePath).readText()
+                }
+                Log.d("BundleLoad", "JSON string length: ${jsonString.length}")
+
+                val jsonElement = JsonParser.parseString(jsonString)
+                val rootObject = jsonElement.asJsonObject
+                val exercisesArray = rootObject.getAsJsonArray("allSetups") // Corrected key
+                val type = object : TypeToken<List<TimerSetup>>() {}.type
+                val loadedSetups: List<TimerSetup> =
+                    gson.fromJson(exercisesArray, type) ?: emptyList()
+                Log.d("BundleLoad", "Deserialized ${loadedSetups.size} setups from bundle.")
+
+                if (loadedSetups.isEmpty()) {
+                    Log.w(
+                        "BundleLoad",
+                        "Loaded bundle '${bundle.name}' is empty. No exercises to apply."
+                    )
+                    withContext(Dispatchers.Main) {
+                        _isExerciseListDirty.value = false // It's clean (empty)
+                        selectedBundle =
+                            null // <-- Clear selected bundle as it's an empty load (like an error)
+                        Toast.makeText(
+                            getApplication(),
+                            "Bundle '${bundle.name}' is empty. No exercises loaded.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        dismissLoadBundleOptions()
+                        dismissReplaceConfirmation()
+                    }
+                    return@launch
+                }
+
+                withContext(Dispatchers.Main) {
+                    when (action) {
+                        BundleLoadAction.MERGE -> {
+                            val currentNames =
+                                _setups.value.map { it.name.trim().lowercase() }.toSet()
+                            val newSetupsToAdd = loadedSetups.filter {
+                                !currentNames.contains(
+                                    it.name.trim().lowercase()
+                                )
+                            }
+                            _setups.value = (_setups.value + newSetupsToAdd)
+                            Log.d(
+                                "BundleLoad",
+                                "Merged bundle '${bundle.name}'. Added ${newSetupsToAdd.size} new exercises."
+                            )
+                            selectedBundle =
+                                null // Clear selected bundle after merge (list is now custom)
+                        }
+
+                        BundleLoadAction.REPLACE -> {
+                            _setups.value = loadedSetups
+                            Log.d(
+                                "BundleLoad",
+                                "Replaced current exercises with bundle '${bundle.name}'. Total ${loadedSetups.size} exercises."
+                            )
+                            selectedBundle =
+                                bundle // <-- SET selectedBundle here for REPLACE success!
+                        }
+                    }
+
+                    val firstSetup = _setups.value.firstOrNull()
+                    if (firstSetup != null) {
+                        applySetup(firstSetup)
+                    } else {
+                        handleFirstLaunchOrEmptyState(shouldSave = false)
+                    }
+                    _isExerciseListDirty.value =
+                        false // Successfully loaded a bundle, so list is clean.
+                    Toast.makeText(
+                        getApplication(),
+                        "Bundle '${bundle.name}' loaded successfully!",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    dismissLoadBundleOptions()
+                    dismissReplaceConfirmation()
+                }
+
+            } catch (e: Exception) {
+                Log.e("BundleLoad", "Failed to load bundle '${bundle.name}': ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        getApplication(),
+                        "Failed to load bundle: ${bundle.name}. Error: ${e.localizedMessage}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    selectedBundle = null // Clear selected bundle if loading failed
+                    dismissLoadBundleOptions()
+                    dismissReplaceConfirmation()
+                }
+            }
+        }
+    }
+
+    fun showLoadBundleOptionsOrPerformReplace(bundle: BundleOption) {
+        // --- VVV --- THIS IS THE FINAL, CORRECT FIX --- VVV ---
+        // Set selectedBundle immediately, as it's the item the user chose.
+        selectedBundle = bundle
+
+        if (_setups.value.isEmpty()) {
+            // If current list is empty, proceed directly to load/replace without dialog.
+            performBundleLoad(bundle, BundleLoadAction.REPLACE)
+            // Dialog is not shown, so no need to dismiss.
+        } else {
+            // If list is not empty, then we DO need to show the options dialog.
+            showLoadBundleOptionsDialog = true // This is only set if list is NOT empty.
+        }
+    }
+
+    // New enum to define the loading actions for bundles
+    enum class BundleLoadAction {
+        MERGE,
+        REPLACE
+    }
+
     fun validateExerciseTime(): Boolean {
         val exerciseTimeValue = configState.exerciseTime.toDoubleOrNull()
 
@@ -115,6 +283,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
         return true // Validation PASSED
     }
+
     private fun loadAppState() {
         viewModelScope.launch(Dispatchers.IO) { // Continue to do file I/O on a background thread
             val stateFile = File(getApplication<Application>().filesDir, appStateFilename)
@@ -133,8 +302,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.Main) {
                     // 1. Load the option lists FIRST.
                     // Convert loaded List<String> back to List<SpinnerOption>
-                    bandColorOptions = appState.bandColorOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
-                    weightOptions = appState.weightOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
+                    bandColorOptions = appState.bandColorOptions.map { SpinnerOption(it) }
+                        .ifEmpty { listOf(defaultOption) }
+                    weightOptions = appState.weightOptions.map { SpinnerOption(it) }
+                        .ifEmpty { listOf(defaultOption) }
 
                     // 1. Check if the loaded data is from an old file.
                     //    We map over the setups to create a new, corrected list.
@@ -142,9 +313,11 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                         // If the new `imageResName` is "none" BUT the old `imageResId` exists...
                         if (setup.config.imageResName == "none" && setup.config.imageResId != 0 && setup.config.imageResId != null) {
                             // ...it means we loaded an old file. Find the correct resourceName from the old ID.
-                            val foundImage = imageOptions.find { it.resourceId == setup.config.imageResId }
+                            val foundImage =
+                                imageOptions.find { it.resourceId == setup.config.imageResId }
                             // Create a new config with the correct resourceName.
-                            val migratedConfig = setup.config.copy(imageResName = foundImage?.resourceName ?: "none")
+                            val migratedConfig =
+                                setup.config.copy(imageResName = foundImage?.resourceName ?: "none")
                             // Return a new setup object with the migrated config.
                             setup.copy(config = migratedConfig)
                         } else {
@@ -162,7 +335,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                         // Return the `activeSetup` property that was just populated by the function above.
                     } else {
                         // If the list is NOT empty, find the active setup or default to the first one.
-                        migratedSetups.find { it.name == appState.activeSetupName } ?: migratedSetups.first()
+                        migratedSetups.find { it.name == appState.activeSetupName }
+                            ?: migratedSetups.first()
                     }
                     applySetup(setupToLoad, isInitialLoad = true)
                 }
@@ -254,29 +428,42 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             currentList.add(newOrUpdatedSetup)
         }
-        _setups.value = currentList
+        _setups.value = currentList.toList()
+        _isExerciseListDirty.value = true
+        selectedBundle = null
         applySetup(newOrUpdatedSetup) // Apply the new/updated setup as the active one
     }
 
     fun deleteSetup(setupName: String) {
         val currentList = _setups.value.toMutableList()
+        val initialSize = currentList.size // Capture initial size to know if a change occurred
         currentList.removeAll { it.name.equals(setupName, ignoreCase = true) }
+
+        // Check if any item was actually removed
+        val itemWasRemoved = initialSize > currentList.size
 
         if (currentList.isEmpty()) {
             _setups.value = emptyList()
-            clearAllSetups() // Resets to a default "Unsaved" state and saves
+            selectedBundle = null // Clear selected bundle
+            clearAllSetups() // This will also handle setting _isExerciseListDirty
         } else {
-            _setups.value = currentList
+            _setups.value = currentList.toList() // Ensure new list instance
+            selectedBundle =
+                null // Clear selected bundle, as the list no longer matches the original bundle
             if (activeSetupName.equals(setupName, ignoreCase = true)) {
-                applySetup(currentList.first()) // Make the first one active and save
+                applySetup(currentList.first())
             } else {
-                saveAppState() // Just save the smaller list
+                saveAppState()
+            }
+            if (itemWasRemoved) { // If an item was removed, the list state is now 'dirty' compared to any loaded bundle.
+                _isExerciseListDirty.value = true
             }
         }
     }
 
     fun clearAllSetups() {
         _setups.value = emptyList()
+        _isExerciseListDirty.value = true
         val unsavedDefault = TimerSetup(
             name = "Unsaved Workout",
             getReadySound = defaultSound.displayName,
@@ -289,18 +476,26 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         )
         applySetup(unsavedDefault, isUnsaved = true) // Apply temp state to UI
         selectedImage = defaultImage //  to reset the dropdown UI
+        selectedBundle = null
         saveAppState() // Persist the now-empty list of setups
     }
 
     fun applySetup(setup: TimerSetup, isInitialLoad: Boolean = false, isUnsaved: Boolean = false) {
         configState = setup.config
-        selectedStartRepSound = soundOptions.find { it.resourceName == setup.startRepSound } ?: defaultSound
-        selectedStartRestSound = soundOptions.find { it.resourceName == setup.startRestSound } ?: defaultSound
-        selectedStartSetRestSound = soundOptions.find { it.resourceName == setup.startSetRestSound } ?: defaultSound
-        selectedCompleteSound = soundOptions.find { it.resourceName == setup.completeSound } ?: defaultSound
-        selectedGetReadySound = soundOptions.find { it.resourceName == setup.getReadySound } ?: defaultSound
-        selectedImage = imageOptions.find { it.resourceName == setup.config.imageResName } ?: defaultImage
-        selectedBandColor = bandColorOptions.find { it.value == setup.config.bandColor } ?: defaultOption
+        selectedStartRepSound =
+            soundOptions.find { it.resourceName == setup.startRepSound } ?: defaultSound
+        selectedStartRestSound =
+            soundOptions.find { it.resourceName == setup.startRestSound } ?: defaultSound
+        selectedStartSetRestSound =
+            soundOptions.find { it.resourceName == setup.startSetRestSound } ?: defaultSound
+        selectedCompleteSound =
+            soundOptions.find { it.resourceName == setup.completeSound } ?: defaultSound
+        selectedGetReadySound =
+            soundOptions.find { it.resourceName == setup.getReadySound } ?: defaultSound
+        selectedImage =
+            imageOptions.find { it.resourceName == setup.config.imageResName } ?: defaultImage
+        selectedBandColor =
+            bandColorOptions.find { it.value == setup.config.bandColor } ?: defaultOption
         selectedWeight = weightOptions.find { it.value == setup.config.weightLbs } ?: defaultOption
         activeSetupName = setup.name
         activeSetup = setup
@@ -335,7 +530,12 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addBandColorOption(color: String) {
-        if (color.isNotBlank() && color != "N/A" && bandColorOptions.none { it.value.equals(color, ignoreCase = true) }) {
+        if (color.isNotBlank() && color != "N/A" && bandColorOptions.none {
+                it.value.equals(
+                    color,
+                    ignoreCase = true
+                )
+            }) {
             val newOption = SpinnerOption(color)        // 1. Add the new option to the master list
             bandColorOptions = (bandColorOptions + newOption).sortedBy { it.value }
 
@@ -352,10 +552,17 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addWeightOption(weight: String) {
         val weightNum = weight.toDoubleOrNull()
-        if (weightNum != null && weightOptions.none { it.value.equals(weight, ignoreCase = true) }) {
+        if (weightNum != null && weightOptions.none {
+                it.value.equals(
+                    weight,
+                    ignoreCase = true
+                )
+            }) {
             val newOption = SpinnerOption(weight)
             // 1. Add the new option to the master list
-            weightOptions = (weightOptions + newOption).sortedBy { it.value.toDoubleOrNull() ?: Double.MAX_VALUE }
+            weightOptions = (weightOptions + newOption).sortedBy {
+                it.value.toDoubleOrNull() ?: Double.MAX_VALUE
+            }
 
             // 2. Set the new option as the currently selected one for the UI
             selectedWeight = newOption
@@ -405,12 +612,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             if (appState != null && appState.allSetups.isNotEmpty()) {
                 // 1. Load the spinner options from the imported file into the ViewModel's lists.
                 // 1. Load the spinner options by converting the imported List<String> back to List<SpinnerOption>.
-                bandColorOptions = appState.bandColorOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
-                weightOptions = appState.weightOptions.map { SpinnerOption(it) }.ifEmpty { listOf(defaultOption) }
+                bandColorOptions = appState.bandColorOptions.map { SpinnerOption(it) }
+                    .ifEmpty { listOf(defaultOption) }
+                weightOptions = appState.weightOptions.map { SpinnerOption(it) }
+                    .ifEmpty { listOf(defaultOption) }
 
 
                 // 2. Now that the lists are populated, load the setups.
                 _setups.value = appState.allSetups
+                _isExerciseListDirty.value
 
                 // 3. Find the active setup from the imported file.
                 val setupToApply = appState.allSetups.find { it.name == appState.activeSetupName }
@@ -544,6 +754,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     countdownJob = viewModelScope.launch { countdown(state.remainingDuration) }
                     currentState = TimerState.ExercisingInProgress
                 }
+
                 is TimerState.Resting -> {
                     _timerScreenState.update {
                         it.copy(
@@ -552,11 +763,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     if (state.remainingDuration == state.totalDuration && !resuming) {
-                        AppSoundPlayer.playSound(getApplication(), selectedStartRestSound.resourceId)
+                        AppSoundPlayer.playSound(
+                            getApplication(),
+                            selectedStartRestSound.resourceId
+                        )
                     }
                     countdownJob = viewModelScope.launch { countdown(state.remainingDuration) }
                     currentState = TimerState.RestingInProgress
                 }
+
                 is TimerState.SetResting -> {
                     _timerScreenState.update {
                         it.copy(
@@ -573,6 +788,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     countdownJob = viewModelScope.launch { countdown(state.remainingDuration) }
                     currentState = TimerState.SetRestingInProgress
                 }
+
                 is TimerState.GettingReady -> {
                     _timerScreenState.update {
                         it.copy(
@@ -603,10 +819,17 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 // --- TERMINATION STATES ---
                 is TimerState.Finished -> {
-                    _timerScreenState.update { it.copy(status = "Finished!", remainingTime = 0, progressDisplay = "") }
+                    _timerScreenState.update {
+                        it.copy(
+                            status = "Finished!",
+                            remainingTime = 0,
+                            progressDisplay = ""
+                        )
+                    }
                     AppSoundPlayer.playSound(getApplication(), selectedCompleteSound.resourceId)
                     stopTimer() // This will cancel the parent timerJob and exit the loop
                 }
+
                 is TimerState.Ready -> {
                     // The timer has been stopped or reset. Exit the loop.
                     timerJob?.cancel()
@@ -710,6 +933,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val fullExerciseDurationMillis = ((exerciseSec + moveToSec) * 1000).toLong()
         return TimerState.Exercising(fullExerciseDurationMillis, fullExerciseDurationMillis)
     }
+
     //
     // --- Sound Initialization ---
     //
@@ -753,7 +977,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     ) return@forEach
 
                     val resourceId = field.getInt(null)
-                    val displayName = field.name.replace('_', ' ').replaceFirstChar { it.titlecase() }
+                    val displayName =
+                        field.name.replace('_', ' ').replaceFirstChar { it.titlecase() }
                     val resourceName = field.name // The raw field name, which matches your JSON
                     allImages.add(ImageOption(displayName, resourceId, resourceName))
                 } catch (_: Exception) {
@@ -761,6 +986,37 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             }
         imageOptions = allImages.sortedBy { it.resourceName }
     }
+
+    private fun initializeBundles() {
+        val assetManager = getApplication<Application>().assets
+        val foundBundles = mutableListOf<BundleOption>()
+
+        try {
+            // List files directly in the assets root.
+            // Adjust "bundles" or other subfolder name if your JSONs are nested.
+            val assetFiles = assetManager.list("") ?: arrayOf() // List all files in assets root
+            val factoryBundles = assetFiles.filter { it.endsWith(".json") }.map { filename ->
+                // Remove ".json" for a cleaner display name, then add "(factory)"
+                val displayName = filename.removeSuffix(".json").replace('_', ' ')
+                    .replaceFirstChar { it.uppercase() } + " (factory)"
+                BundleOption(
+                    name = displayName,
+                    filePath = filename, // Path relative to assets root
+                    isFactory = true
+                )
+            }
+
+            foundBundles.addAll(factoryBundles)
+
+            // TODO: In a later step, we'll also load user-created bundles from context.filesDir
+
+            bundleOptions = foundBundles.toList() // Update the observable state
+        } catch (e: Exception) {
+            Log.e("TimerViewModel", "Error listing asset bundles: ${e.message}", e)
+            bundleOptions = emptyList() // Ensure list is empty on error
+        }
+    }
+
 
     sealed class TimerState {
         // States that INITIATE a countdown
