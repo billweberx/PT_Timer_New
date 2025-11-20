@@ -19,15 +19,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -62,7 +64,9 @@ import com.billweberx.pt_timer.pressable
 @Composable
 fun PTTimerScreen(
     viewModel: TimerViewModel,
-    onGoToSettings: () -> Unit
+    onGoToSettings: () -> Unit,
+    onGoToHelp: () -> Unit,
+    onGoToAbout: () -> Unit
 ) {
 
     // State from ViewModel
@@ -101,8 +105,42 @@ fun PTTimerScreen(
         ) {
             Text("PT Timer", style = MaterialTheme.typography.titleLarge)
             Text("Home", style = MaterialTheme.typography.titleLarge)
-            IconButton(onClick = onGoToSettings) {
-                Icon(Icons.Default.Settings, contentDescription = "Settings")
+            Box { // Box to anchor the dropdown menu
+                var showMenu by remember { mutableStateOf(false) } // State to control menu visibility
+
+                IconButton(onClick = {
+                    showMenu = !showMenu
+                }) { // Tapping this button toggles the menu (3 dot icon)
+                    Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false } // Close menu when dismissed
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Settings") },
+                        onClick = {
+                            showMenu = false
+                            onGoToSettings() // Call the existing settings navigation
+                        }
+                    )
+                    HorizontalDivider() // Separator line for clarity
+                    DropdownMenuItem(
+                        text = { Text("Help") },
+                        onClick = {
+                            showMenu = false
+                            onGoToHelp() // Call the existing help navigation
+                        }
+                    )
+                    HorizontalDivider() // Separator line for clarity
+                    DropdownMenuItem(
+                        text = { Text("About") }, // <-- ADD THIS NEW MENU ITEM
+                        onClick = {
+                            showMenu = false
+                            onGoToAbout() // Call the new about navigation
+                        }
+                    )
+                }
             }
         }
 
@@ -200,7 +238,10 @@ fun PTTimerScreen(
                     if (isRunning && !timerState.isPaused) {
                         Icon(Icons.Default.Pause, contentDescription = "Pause")
                     } else {
-                        Icon(Icons.Default.PlayArrow, contentDescription = if (timerState.isPaused) "Resume" else "Start")
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = if (timerState.isPaused) "Resume" else "Start"
+                        )
                     }
                 }
             }
@@ -211,7 +252,9 @@ fun PTTimerScreen(
             Surface(
                 shape = CircleShape,
                 // The color now also reflects the enabled state
-                color = if (isStopButtonEnabled) Color(0xFFFFCDD2) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                color = if (isStopButtonEnabled) Color(0xFFFFCDD2) else MaterialTheme.colorScheme.surfaceVariant.copy(
+                    alpha = 0.5f
+                ),
                 contentColor = if (isStopButtonEnabled) Color.Black else Color.Gray,
                 modifier = Modifier
                     .size(64.dp)
@@ -311,7 +354,17 @@ fun PTTimerScreen(
                 // No changes are needed inside this menu.
                 loadedSetups.forEach { setup ->
                     DropdownMenuItem(
-                        text = { Text(setup.name) },
+                        text = {
+                            Text(
+                                text = setup.name,
+                                modifier = Modifier,
+                                style = if (viewModel.activeSetupName == setup.name) {
+                                    MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.primary)
+                                } else {
+                                    MaterialTheme.typography.bodyLarge
+                                }
+                            )
+                        },
                         onClick = {
                             viewModel.applySetup(setup)
                             isSetupDropdownExpanded = false
@@ -496,7 +549,8 @@ fun ReadOnlyField(label: String, value: String, modifier: Modifier = Modifier) {
 // } // This brace closes the PTTimerScreen function
 
 // --- ADD THIS NEW FUNCTION HERE ---
-private fun formatTime(millis: Long): String {    if (millis <= 0) return "0.0"
+private fun formatTime(millis: Long): String {
+    if (millis <= 0) return "0.0"
     val totalSeconds = millis / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
@@ -504,10 +558,10 @@ private fun formatTime(millis: Long): String {    if (millis <= 0) return "0.0"
     // For times under a minute, show seconds and tenths of a second
     return if (totalSeconds < 60) {
         val tenths = (millis % 1000) / 100
-        String.format(Locale.US,"%d.%d", seconds, tenths)
+        String.format(Locale.US, "%d.%d", seconds, tenths)
     } else {
         // For times a minute or over, show MM:SS
-        String.format(Locale.US,"%02d:%02d", minutes, seconds)
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
 
