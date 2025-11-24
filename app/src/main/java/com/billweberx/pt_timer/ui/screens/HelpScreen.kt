@@ -91,7 +91,6 @@ fun HelpScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // --- Expandable Section: Main Screen Operation ---
-            // --- Expandable Section: Main Screen Operation ---
             ExpandableHelpSection(
                 title = "Main Screen Operation",
                 content = {

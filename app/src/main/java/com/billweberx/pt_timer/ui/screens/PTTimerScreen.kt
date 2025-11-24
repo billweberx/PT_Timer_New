@@ -36,6 +36,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -320,6 +321,26 @@ fun PTTimerScreen(
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
+        }
+        // Row for "Auto Select next exercise" switch
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Auto Select Next Exercise",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f) // Take up available space
+            )
+            Switch(
+                checked = viewModel.continueToNextExercise, // Bind to ViewModel state
+                onCheckedChange = { newValue ->
+                    viewModel.continueToNextExercise = newValue
+                }
+            )
         }
 
         // Row 8:  the Setups dropdown

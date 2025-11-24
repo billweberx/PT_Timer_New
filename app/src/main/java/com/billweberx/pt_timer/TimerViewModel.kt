@@ -74,7 +74,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var activeSetupName by mutableStateOf<String?>("")
     var activeSetup by mutableStateOf<TimerSetup?>(null)
     private val _isExerciseListDirty = MutableStateFlow(false)
-    val isExerciseListDirty: StateFlow<Boolean> = _isExerciseListDirty.asStateFlow()
 
     // Timer State Machine properties
     private var currentState: TimerState = TimerState.Ready
@@ -94,6 +93,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var selectedBundle by mutableStateOf<BundleOption?>(null) // Nullable as no bundle may be selected initially
     var isBundleDropdownExpanded by mutableStateOf(false)
+
+    var continueToNextExercise by mutableStateOf(false)
+    var currentSetupIndex by mutableStateOf(-1) // Index of the currently active setup in _setups list
+        private set
 
     // State for managing the bundle loading process
     var showLoadBundleOptionsDialog by mutableStateOf(false)
@@ -122,6 +125,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             _toastMessage.value = "Exercise time must be greater than 0."
             return // Exit the function, preventing the invalid state from being set.
         }
+
 
         // --- If validation passes, update the state ---
         configState = newConfig
@@ -499,6 +503,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         selectedWeight = weightOptions.find { it.value == setup.config.weightLbs } ?: defaultOption
         activeSetupName = setup.name
         activeSetup = setup
+        currentSetupIndex = _setups.value.indexOfFirst { it.name == setup.name }
 
         if (!isInitialLoad && !isUnsaved) {
             saveAppState()
@@ -819,15 +824,47 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 // --- TERMINATION STATES ---
                 is TimerState.Finished -> {
-                    _timerScreenState.update {
-                        it.copy(
-                            status = "Finished!",
-                            remainingTime = 0,
-                            progressDisplay = ""
-                        )
+                    if (continueToNextExercise && currentSetupIndex != -1 && currentSetupIndex < _setups.value.size - 1) {
+                        val nextIndex = currentSetupIndex + 1
+                        val nextSetup = _setups.value[nextIndex]
+
+                        // Reset internal timer states for the new exercise
+                        currentRepNumber = 1
+                        currentSetNumber = 1
+                        setMasterClock = 0L // Reset total time mode clock
+
+                        // Apply the next setup and transition to the "Getting Ready" phase for it
+                        withContext(Dispatchers.Main) { // Ensure UI updates on main thread
+                            applySetup(nextSetup) // This will update activeSetup and currentSetupIndex
+                            currentState =
+                                TimerState.Ready // Set to Ready, waiting for user to press Start
+                            _timerScreenState.update {
+                                it.copy(
+                                    status = "Ready", // Display Ready status
+                                    remainingTime = 0, // Reset timer display
+                                    progressDisplay = "Next: ${nextSetup.name}" // Optional: show next exercise name
+                                )
+                            }
+                            // Call stopTimer to clean up the current timerJob, leaving the system in a Ready state.
+                            stopTimer() // Cleans up the timerJob, but currentState is already 'Ready'
+                            Log.d(
+                                "TimerState",
+                                "Automatically switched to next exercise: ${nextSetup.name}. Waiting for Start."
+                            )
+                        }
+                    } else {
+                        // No auto-continue, or this was the last exercise.
+                        _timerScreenState.update {
+                            it.copy(
+                                status = "Finished!",
+                                remainingTime = 0,
+                                progressDisplay = ""
+                            )
+                        }
+                        AppSoundPlayer.playSound(getApplication(), selectedCompleteSound.resourceId)
+                        stopTimer() // This will cancel the parent timerJob and exit the loop
+                        Log.d("TimerState", "Workout finished.")
                     }
-                    AppSoundPlayer.playSound(getApplication(), selectedCompleteSound.resourceId)
-                    stopTimer() // This will cancel the parent timerJob and exit the loop
                 }
 
                 is TimerState.Ready -> {
