@@ -1,5 +1,5 @@
 {
-  "activeSetupName": "Supported Dumbbell Row - Right",
+  "activeSetupName": "dowell- assisted overhead reach",
   "allSetups": [
     {
       "completeSound": "complete",
@@ -8,7 +8,7 @@
         "exerciseTime": "3",
         "getReadyTime": "5",
         "imageResId": 2131165319,
-        "imageResName": "none",
+        "imageResName": "dowel_assisted_overhead_reach",
         "instructions": "Starting position: begin lying on your back, holding a dowel, with your palms facing down. With control, lift the dowel overhead until you feel a comfortable stretch in your shoulders. Pause briefly, and return to the starting position.",
         "moveFromTime": "1",
         "moveToTime": "1",
@@ -187,7 +187,7 @@
       "completeSound": "complete",
       "config": {
         "bandColor": "N/A",
-        "exerciseTime": "3",
+        "exerciseTime": "2",
         "getReadyTime": "5",
         "imageResId": 2131165430,
         "imageResName": "sidelying_shoulder_er_right",
@@ -239,7 +239,7 @@
       "completeSound": "complete",
       "config": {
         "bandColor": "N/A",
-        "exerciseTime": "3",
+        "exerciseTime": "1.5",
         "getReadyTime": "5",
         "imageResId": 2131165432,
         "imageResName": "sidelying_shoulder_flexion_right",
@@ -705,17 +705,16 @@
     }
   ],
   "bandColorOptions": [
-    "Blue",
-    "Green",
-    "N/A",
-    "Red"
+    "N/A"
   ],
   "weightOptions": [
-    "0",
     "1.5",
     "3.5",
-    "4",
     "6",
+    "12",
+    "N/A"
+  ]
+}
     "12",
     "17",
     "20",
