@@ -84,6 +84,7 @@ import com.billweberx.pt_timer.data.SpinnerOption
 import com.billweberx.pt_timer.pressable
 
 import androidx.compose.material3.ButtonDefaults
+import com.billweberx.pt_timer.data.BundleOption
 
 @SuppressLint("LocalContextResourcesRead", "DiscouragedApi")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,11 +105,15 @@ fun SetupScreen(
     var isSoundConfigExpanded by remember { mutableStateOf(false) }
     var isExerciseConfigExpanded by remember { mutableStateOf(false) }
     var isExerciseInstructionsExpanded by remember { mutableStateOf(false) }
-
+    val (showDeleteBundleConfirmDialog, setShowDeleteBundleConfirmDialog) = remember {
+        mutableStateOf(
+            false
+        )
+    }
 
     LaunchedEffect(toastMessage) {
         toastMessage?.let { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             // Notify the ViewModel that the message has been shown to prevent it from re-appearing
             viewModel.onToastShown()
         }
@@ -681,6 +686,82 @@ fun SetupScreen(
                     )
 
                     Spacer(modifier = Modifier.height(20.dp))
+
+                    // Input field for new bundle name
+                    var newBundleName by remember { mutableStateOf("") } // Local state for the bundle name
+                    OutlinedTextField(
+                        value = newBundleName,
+                        onValueChange = { newBundleName = it },
+                        label = { Text("Save As Bundle Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Save Bundle Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        val saveBundleInteractionSource = remember { MutableInteractionSource() }
+                        val saveBundleButtonEnabled =
+                            newBundleName.isNotBlank() && loadedSetups.isNotEmpty()
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (saveBundleButtonEnabled) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (saveBundleButtonEnabled) MaterialTheme.colorScheme.onSecondary else Color.Gray,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = saveBundleInteractionSource,
+                                enabled = saveBundleButtonEnabled,
+                                onClick = {
+                                    viewModel.saveBundle(newBundleName) // Call ViewModel to save
+                                    newBundleName = "" // Clear input field after saving
+                                }
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                            ) {
+                                Text("Save Bundle")
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Delete Bundle Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        val deleteBundleInteractionSource = remember { MutableInteractionSource() }
+                        // Enable only if a user-created bundle is currently selected
+                        val deleteBundleButtonEnabled =
+                            viewModel.selectedBundle != null && !viewModel.selectedBundle!!.isFactory
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (deleteBundleButtonEnabled) Color.Red.copy(alpha = 0.8f) else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (deleteBundleButtonEnabled) Color.White else Color.Gray,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = deleteBundleInteractionSource,
+                                enabled = deleteBundleButtonEnabled,
+                                onClick = {
+                                    setShowDeleteBundleConfirmDialog(true)
+                                } // Show confirm dialog on click
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                            ) {
+                                Text("Delete Bundle")
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     Spacer(modifier = Modifier.height(20.dp))
 
@@ -777,7 +858,14 @@ fun SetupScreen(
                             tonalElevation = 2.dp,
                             modifier = Modifier.pressable(
                                 interactionSource = exportInteractionSource,
-                                onClick = { saveLauncher.launch("PT_Timer_Setups.json") }
+                                onClick = {
+                                    Toast.makeText(
+                                        context,
+                                        "Tap a filename once or type a new name to save. Avoid long-press on existing files.",
+                                        Toast.LENGTH_LONG // <-- CHANGED TO LENGTH_LONG
+                                    ).show()
+                                    saveLauncher.launch("PT_Timer_Setups.json")
+                                }
                             )
                         ) {
                             Box(
@@ -968,6 +1056,49 @@ fun SetupScreen(
                     viewModel.selectedBundle = null // Clear selected bundle on explicit cancel
                     viewModel.dismissLoadBundleOptions()
                 }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    DeleteBundleConfirmationDialog(
+        showDialog = showDeleteBundleConfirmDialog,
+        onDismiss = { setShowDeleteBundleConfirmDialog(false) },
+        onConfirm = { bundleToDelete ->
+            viewModel.deleteUserBundle(bundleToDelete)
+            // If the deleted bundle was the selected one, clear the spinner
+            if (viewModel.selectedBundle?.filePath == bundleToDelete.filePath) {
+                viewModel.selectedBundle = null
+            }
+        },
+        selectedBundle = viewModel.selectedBundle // Pass the currently selected bundle from ViewModel
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DeleteBundleConfirmationDialog(
+    showDialog: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (BundleOption) -> Unit, // Takes the BundleOption to be deleted
+    selectedBundle: BundleOption?
+) {
+    if (showDialog && selectedBundle != null) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Confirm Delete Bundle") },
+            text = { Text("Are you sure you want to delete the bundle '${selectedBundle.name}'? This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onConfirm(selectedBundle) // Pass the bundle to the confirm action
+                    onDismiss() // Dismiss the dialog after action
+                }) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
                     Text("Cancel")
                 }
             }

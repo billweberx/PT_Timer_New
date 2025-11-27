@@ -1,5 +1,5 @@
 {
-  "activeSetupName": "dowell- assisted overhead reach",
+  "activeSetupName": "Total time test",
   "allSetups": [
     {
       "completeSound": "complete",
@@ -420,7 +420,7 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Red",
+        "bandColor": "red",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165425,
@@ -446,7 +446,7 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Red",
+        "bandColor": "red",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165424,
@@ -472,7 +472,7 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Blue",
+        "bandColor": "blue",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165420,
@@ -498,7 +498,7 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Blue",
+        "bandColor": "blue",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165420,
@@ -524,7 +524,7 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Green",
+        "bandColor": "green",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165422,
@@ -550,7 +550,7 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Green",
+        "bandColor": "green",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165422,
@@ -617,7 +617,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "17"
+        "weightLbs": "20"
       },
       "getReadySound": "move_to_start_position",
       "name": "Supported Dumbbell Row - Right",
@@ -643,7 +643,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "4"
+        "weightLbs": "3.5"
       },
       "getReadySound": "move_to_start_position",
       "name": "Standing Scaption With Dumbbells",
@@ -705,19 +705,22 @@
     }
   ],
   "bandColorOptions": [
-    "N/A"
+    "N/A",
+    "blue",
+    "green",
+    "red",
+    "yellow"
   ],
   "weightOptions": [
     "1.5",
     "3.5",
     "6",
-    "12",
-    "N/A"
-  ]
-}
+    "10",
     "12",
     "17",
     "20",
+    "30",
+    "40",
     "N/A"
   ]
 }

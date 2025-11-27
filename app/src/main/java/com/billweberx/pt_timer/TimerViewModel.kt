@@ -374,6 +374,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 weightOptions = weightOptions.map { it.value }
             )
             val json = gson.toJson(currentState)
+            Log.d(
+                "SaveAppState",
+                "Generated JSON for app state: ${json.take(500)}..."
+            ) // Log first 500 chars to avoid truncation
             File(getApplication<Application>().filesDir, appStateFilename).writeText(json)
         } catch (e: Exception) {
             Log.e("SaveAppState", "Error writing app state to file", e)
@@ -667,9 +671,116 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 weightOptions = weightOptions.map { it.value }
             )
             val json = gson.toJson(currentState)
+            Log.d(
+                "SaveToUri",
+                "Generated JSON for URI: ${json.take(500)}..."
+            ) // Log first 500 chars
             context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
         } catch (e: Exception) {
             Log.e("SaveToUri", "Failed to write setups to URI: $uri", e)
+        }
+    }
+
+    fun saveBundle(bundleName: String) {
+        if (bundleName.isBlank()) {
+            _toastMessage.value = "Bundle name cannot be empty."
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val userBundlesDir = File(getApplication<Application>().filesDir, "user_bundles")
+            if (!userBundlesDir.exists()) {
+                userBundlesDir.mkdirs() // Create the directory if it doesn't exist
+            }
+
+            val filename = "${bundleName.trim()}.json"
+            val bundleFile = File(userBundlesDir, filename)
+
+            if (bundleFile.exists()) {
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value =
+                        "Bundle '$bundleName' already exists. Please choose a different name."
+                }
+                return@launch
+            }
+
+            try {
+                val currentState = AppState(
+                    allSetups = _setups.value,
+                    activeSetupName = activeSetup?.name,
+                    bandColorOptions = bandColorOptions.map { it.value },
+                    weightOptions = weightOptions.map { it.value }
+                )
+                val json = gson.toJson(currentState)
+                bundleFile.writeText(json)
+
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Bundle '$bundleName' saved successfully!"
+                    // Update bundleOptions to include the new user bundle
+                    val newBundleOption = BundleOption(
+                        name = bundleName.trim(), // Use plain name for user bundles
+                        filePath = "user_bundles/$filename", // Relative path for user bundle
+                        isFactory = false
+                    )
+                    bundleOptions = (bundleOptions + newBundleOption).sortedBy { it.name }
+                    selectedBundle = newBundleOption // Make the newly saved bundle the selected one
+                    _isExerciseListDirty.value =
+                        false // Saving makes the current list "clean" relative to this bundle
+                }
+            } catch (e: Exception) {
+                Log.e("SaveBundle", "Failed to save bundle '$bundleName': ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Failed to save bundle: ${e.localizedMessage}"
+                }
+            }
+        }
+    }
+
+    fun deleteUserBundle(bundle: BundleOption) {
+        viewModelScope.launch(Dispatchers.IO) { // All suspend calls go inside this scope
+            if (bundle.isFactory) {
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Cannot delete factory bundles."
+                }
+                return@launch // Return from the coroutine
+            }
+
+            val userBundlesDir = File(getApplication<Application>().filesDir, "user_bundles")
+            val filename =
+                bundle.filePath.substringAfterLast("/") // Get just the filename from the relative path
+            val bundleFile = File(userBundlesDir, filename)
+
+            if (bundleFile.exists()) {
+                try {
+                    val deleted = bundleFile.delete()
+                    withContext(Dispatchers.Main) {
+                        if (deleted) {
+                            _toastMessage.value = "Bundle '${bundle.name}' deleted successfully!"
+                            // Remove from options list
+                            bundleOptions = bundleOptions.filter { it.filePath != bundle.filePath }
+                                .sortedBy { it.name }
+                            // Clear selected bundle if the deleted one was active
+                            if (selectedBundle?.filePath == bundle.filePath) {
+                                selectedBundle = null
+                            }
+                            // If _setups was loaded from this bundle, it's now dirty relative to no bundle
+                            _isExerciseListDirty.value =
+                                true // List is modified relative to any bundle
+                        } else {
+                            _toastMessage.value = "Failed to delete bundle file: '${bundle.name}'."
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("DeleteBundle", "Error deleting bundle '${bundle.name}': ${e.message}", e)
+                    withContext(Dispatchers.Main) {
+                        _toastMessage.value = "Error deleting bundle: ${e.localizedMessage}"
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Bundle file '${bundle.name}' not found."
+                }
+            }
         }
     }
 
@@ -824,6 +935,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 // --- TERMINATION STATES ---
                 is TimerState.Finished -> {
+                    AppSoundPlayer.playSound(getApplication(), selectedCompleteSound.resourceId)
                     if (continueToNextExercise && currentSetupIndex != -1 && currentSetupIndex < _setups.value.size - 1) {
                         val nextIndex = currentSetupIndex + 1
                         val nextSetup = _setups.value[nextIndex]
@@ -861,7 +973,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                                 progressDisplay = ""
                             )
                         }
-                        AppSoundPlayer.playSound(getApplication(), selectedCompleteSound.resourceId)
                         stopTimer() // This will cancel the parent timerJob and exit the loop
                         Log.d("TimerState", "Workout finished.")
                     }
@@ -1045,7 +1156,23 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
             foundBundles.addAll(factoryBundles)
 
-            // TODO: In a later step, we'll also load user-created bundles from context.filesDir
+            // Load user-created bundles from internal storage
+            val userBundlesDir = File(getApplication<Application>().filesDir, "user_bundles")
+            if (userBundlesDir.exists() && userBundlesDir.isDirectory) {
+                val userFiles =
+                    userBundlesDir.listFiles { file -> file.isFile && file.name.endsWith(".json") }
+                        ?: arrayOf()
+                val userBundles = userFiles.map { file ->
+                    val displayName = file.nameWithoutExtension.replace('_', ' ')
+                        .replaceFirstChar { it.uppercase() }
+                    BundleOption(
+                        name = displayName,
+                        filePath = "user_bundles/${file.name}", // Path relative to filesDir
+                        isFactory = false
+                    )
+                }
+                foundBundles.addAll(userBundles)
+            }
 
             bundleOptions = foundBundles.toList() // Update the observable state
         } catch (e: Exception) {
@@ -1075,3 +1202,4 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 }
+

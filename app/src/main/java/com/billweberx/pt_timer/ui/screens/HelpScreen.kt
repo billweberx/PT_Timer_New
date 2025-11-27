@@ -90,6 +90,123 @@ fun HelpScreen(
             // Spacer below the TopAppBar
             Spacer(modifier = Modifier.height(16.dp))
 
+            ExpandableHelpSection(
+                title = "Read this first...",
+                content = {
+                    Column(modifier = Modifier.padding(top = 8.dp)) { // Padding for the whole content column
+                        Text(
+                            text = "Introduction",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Please make note that you should not take the example exercises provided in this app " +
+                                    "as doctor or physical therapy advice.  They are provided as a template for you to use " +
+                                    "as a starting point for your own workouts.  Your workouts should be directed by your doctor and " +
+                                    "physical therapist.  Always take their advice over any that is provided here.  " +
+                                    "These examples are actual physical therapy exercises prescribed for post rotator cuff tear " +
+                                    "surgery.  Additional exercises were performed at a physical therapy facility that are are not " +
+                                    "all included.  Please use these exercises as a starting point for your own workouts.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Example Workout Setup",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Many times the settings for one exercise will be similar to another.  It is not unusual " +
+                                    "to repeat the settings with some minor changes.  An example for creating your own exercise is as follows: ",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "1.  Go to the Settings screen. ",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "2.  Tap 'Manage Setups'. ",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "3.  If you want to start with some of the provided exercise examples, tap 'Select a Bundle'.  " +
+                                    "If not, tap the 'Clear Setup' button to start with a blank slate.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "4.  If you chose to select a bundle, tap one of the choices in the dropdown list. ",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "   a) Review each exercise in the list that is shown and tap the delete icon next" +
+                                    "      to any that you do not want to include in your workout.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "   b) Tap on the first exercise that remains.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "   c) Most likely you will not want to change the 'Sound Configuration'.  " +
+                                    "If you do, review the 'Settings Screen Instructions' section.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "   d) Tap the 'Exercise Configuration' drop down.  Unless there is an appropriate " +
+                                    "image for your exercise, choose 'None' for Image.  If you are using bands, tap the " +
+                                    "'Band Color' dropdown and select the color you are using.  If it is not an available " +
+                                    "choice, type your color and tap 'Add'.  If you are using weights, tap the 'Weight' dropdown " +
+                                    "and select the weight you are using.  If the weight choice is not available, type your weight " +
+                                    "and tap 'Add'.  Enter the number of times you perform the exercise per day and week.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "   e) Tap the 'Timer Configuration'.  This section may take some trial and error to get right.  " +
+                                    "Think about your exercise movements.  How long will it take to go from the starting position to the " +
+                                    "final position?  That is the amount to enter into the 'Move To' field.  How long to hold the final position?  " +
+                                    "That is the amount to enter into the 'Exercise' field.  How long to move to the start (rest) position?  " +
+                                    "That is the amount to enter into the 'Move From' field. How long do you want to rest.  Enter that amount " +
+                                    "in the 'Rest' field.  Now enter the number of repetitions in the 'Reps' field.  " +
+                                    "If you are not counting reps, you can put a zero in the 'Reps' field and enter the total time for " +
+                                    "all the repetitions in the 'Total Time' field. The 'Get Ready' field is the amount of time to wait " +
+                                    "before starting the workout.  It gives you time to get set up.  Make your best guess.  Enter the number " +
+                                    "of sets in the 'Sets' field.  This will be the number of times you repeat all the reps or the total time.  " +
+                                    "Enter the amount of time to wait between sets in the 'Set Rest' field.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "   f) Tap 'Manage Setups'.  If you previously cleared all the exercises, Enter your exercise name " +
+                                    "in the 'New Exercise Name' field and tap 'Save'.  If you are editing an exercise, the name should still  " +
+                                    "be in the 'New Exercise Name' field.  Tap 'Save' to save the changes. ",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "   g) Repeat all the steps above for as many times as you have exercises.  When you are finished, " +
+                                    "you can export your collection of exercises to a JSON file and save it to your device.  Do this by  " +
+                                    "tapping on the 'Export' button, navigate to your folder choice, enter a filename, and tap 'Save'. " +
+                                    "Later when you want to retrieve your collection of exercises, you can import them with the 'Import' button.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // --- Expandable Section: Main Screen Operation ---
             ExpandableHelpSection(
                 title = "Main Screen Operation",
