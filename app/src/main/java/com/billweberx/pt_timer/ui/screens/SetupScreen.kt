@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -73,6 +71,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.decode.GifDecoder
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -153,7 +152,9 @@ fun SetupScreen(
         onResult = { uri: Uri? ->
             uri?.let {
                 // Use the context we defined above
-                viewModel.saveSetupsToUri(context, it)
+                scope.coroutineLaunch { // Use the scope from SetupScreen
+                    viewModel.saveSetupsToUri(context, it)
+                }
             }
         }
     )
@@ -978,59 +979,35 @@ fun SetupScreen(
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
 
                     val context = LocalContext.current // Obtain the context within the Composable
-
-
                     val selectedImageOption = viewModel.selectedImage
-                    if (selectedImageOption.resourceId != 0) {
-                        // It's a factory (drawable) image
-                        val imageResourceId = context.resources.getIdentifier(
-                            selectedImageOption.storageName,
-                            "drawable",
-                            context.packageName
-                        )
-                        if (imageResourceId != 0) {
-                            val painter = painterResource(id = imageResourceId)
-                            Image(
-                                painter = painter,
-                                contentDescription = "Exercise Image: ${selectedImageOption.displayName}",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height),
-                                contentScale = ContentScale.FillWidth
-                            )
+
+                    // Use AsyncImage for both drawable and user-added images for consistency and GIF support.
+                    if (selectedImageOption.storageName != "none") {
+                        val imageModel = if (selectedImageOption.resourceId != 0) {
+                            // It's a factory (drawable) image
+                            selectedImageOption.resourceId // Coil can load from R.drawable.id
                         } else {
-                            // Fallback for factory images if resourceId becomes invalid for some reason
-                            Text(
-                                "Image not found: ${selectedImageOption.displayName}",
-                                color = Color.Red
+                            // It's a user-added image (resourceId == 0)
+                            File(
+                                context.filesDir,
+                                "${viewModel.userImagesDirectory}/${selectedImageOption.storageName}"
                             )
                         }
-                    } else if (selectedImageOption.storageName != "none") {
-                        // It's a user-added image (resourceId == 0)
-                        val userImageFile = File(
-                            context.filesDir,
-                            "${viewModel.userImagesDirectory}/${selectedImageOption.storageName}"
+
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(imageModel) // Load from R.drawable or File
+                                .crossfade(true)
+                                .allowHardware(false)
+                                .build(),
+                            contentDescription = "Exercise Image: ${selectedImageOption.displayName}",
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            contentScale = ContentScale.FillWidth,
+                            //     error = painterResource(id = android.R.drawable.ic_menu_gallery) // Fallback for loading errors
                         )
-                        if (userImageFile.exists()) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(userImageFile) // Load from file
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = "User Exercise Image: ${selectedImageOption.displayName}",
-                                modifier = Modifier
-                                    .fillMaxWidth(),
-                                contentScale = ContentScale.FillWidth,
-                                error = painterResource(id = android.R.drawable.ic_menu_gallery) // Fallback for loading errors
-                            )
-                        } else {
-                            Text(
-                                "User image file not found: ${selectedImageOption.displayName}",
-                                color = Color(0xFFFFA000)
-                            ) // Amber color
-                        }
                     } else {
-                        // selectedImageOption.resourceName == "none", do not display an image
+                        // selectedImageOption.storageName == "none", do not display an image
                         Text("No image selected.", color = Color.Gray)
                     }
 

@@ -2,7 +2,6 @@ package com.billweberx.pt_timer.ui.screens // Make sure this line is at the very
 
 import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +25,6 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -51,6 +49,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import java.io.File
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -360,11 +361,7 @@ fun PTTimerScreen(
                 label = { Text("Setups") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isSetupDropdownExpanded) },
                 modifier = Modifier
-                    .menuAnchor(
-                        type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
-                        // Pass the enabled state to the new modifier
-                        enabled = !isRunning
-                    )
+                    .menuAnchor()
                     .fillMaxWidth()
             )
             ExposedDropdownMenu(
@@ -515,25 +512,44 @@ fun PTTimerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp) // Adds space between items
                 ) {
-                    // 1. Display the image FIRST, if it exists.
-                    val imageResourceId = context.resources.getIdentifier(
-                        viewModel.selectedImage.storageName, // The resource name (e.g., "dowel_assisted_overhead_reach")
-                        "drawable", // The type of resource
-                        context.packageName // The package name
-                    )
+                    val selectedImageOption = viewModel.selectedImage
+                    val userImagesDirectory =
+                        viewModel.userImagesDirectory // Get the userImagesDirectory from ViewModel
 
-                    // ONLY display the Image composable if a valid (non-zero) resource ID is found.
-                    if (imageResourceId != 0) {
-                        val painter = painterResource(id = imageResourceId)
-                        Image(
-                            painter = painter,
-                            contentDescription = "Exercise Image: ${viewModel.selectedImage.displayName}", // Use selectedImage.name for accurate content description
+                    // Use AsyncImage for both drawable and user-added images for consistency and GIF support.
+                    if (selectedImageOption.storageName != "none") {
+                        val imageModel = if (selectedImageOption.resourceId != 0) {
+                            // It's a factory (drawable) image, load by resource ID
+                            selectedImageOption.resourceId
+                        } else {
+                            // It's a user-added image (resourceId == 0), load from file path
+                            File(
+                                context.filesDir,
+                                "$userImagesDirectory/${selectedImageOption.storageName}"
+                            )
+                        }
+
+                        AsyncImage( // <-- AsyncImage is now directly here, no outer Box
+                            model = ImageRequest.Builder(context)
+                                .data(imageModel) // Load from R.drawable or File
+                                .crossfade(true)
+                                .allowHardware(false) // Required for animated GIFs on some devices/older Android versions
+                                .build(),
+                            contentDescription = "Exercise Image: ${selectedImageOption.displayName}",
                             modifier = Modifier
-                                .fillMaxWidth() // Force the width to match the screen.
-                                .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height), // Force height based on aspect ratio.
-                            contentScale = ContentScale.FillWidth // Ensure it scales correctly to the new bounds.
+                                .fillMaxWidth(), // Removed aspectRatio, Coil will handle it
+                            contentScale = ContentScale.FillWidth,
+                            // --- VVV --- RESTORING PLACEHOLDERS --- VVV ---
+                            placeholder = painterResource(id = android.R.drawable.ic_menu_gallery), // Generic placeholder
+                            error = painterResource(id = android.R.drawable.ic_dialog_alert), // Error indicator
+                            fallback = painterResource(id = android.R.drawable.ic_menu_gallery) // Fallback for null data
+                            // --- ^^^ --- END RESTORING --- ^^^ ---
                         )
+                    } else {
+                        // selectedImageOption.storageName == "none", do not display an image
+                        Text("No image selected.", color = Color.Gray)
                     }
+
                     // 2. Display the instructions text field SECOND.
                     OutlinedTextField(
                         value = viewModel.configState.instructions,

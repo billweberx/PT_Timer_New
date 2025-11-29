@@ -386,10 +386,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 weightOptions = weightOptions.map { it.value }
             )
             val json = gson.toJson(currentState)
-            Log.d(
-                "SaveAppState",
-                "Generated JSON for app state: ${json.take(500)}..."
-            ) // Log first 500 chars to avoid truncation
+            Log.d("SaveAppState", "Generated JSON for app state: $json")
             File(getApplication<Application>().filesDir, appStateFilename).writeText(json)
         } catch (e: Exception) {
             Log.e("SaveAppState", "Error writing app state to file", e)
@@ -674,7 +671,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveSetupsToUri(context: Context, uri: Uri) {
+    suspend fun saveSetupsToUri(context: Context, uri: Uri) {
         try {
             val currentState = AppState(
                 allSetups = _setups.value,
@@ -683,13 +680,31 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 weightOptions = weightOptions.map { it.value }
             )
             val json = gson.toJson(currentState)
-            Log.d(
-                "SaveToUri",
-                "Generated JSON for URI: ${json.take(500)}..."
-            ) // Log first 500 chars
-            context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-        } catch (e: Exception) {
-            Log.e("SaveToUri", "Failed to write setups to URI: $uri", e)
+            Log.d("SaveToUri", "Generated JSON for URI: $json")
+
+            try {
+                context.contentResolver.openOutputStream(uri, "w")?.use { outputStream ->
+                    outputStream.write(json.toByteArray())
+                    outputStream.flush() // Ensure all buffered data is written
+                }
+            } catch (ioe: java.io.IOException) {
+                // Catch IOException specifically for writing failures
+                Log.e("SaveToUri", "IOException while writing to URI: $uri - ${ioe.message}", ioe)
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Failed to export: ${ioe.localizedMessage}"
+                }
+            } catch (e: Exception) {
+                // Catch other general exceptions
+                Log.e("SaveToUri", "General error writing setups to URI: $uri - ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Failed to export: ${e.localizedMessage}"
+                }
+            }
+        } catch (e: Exception) { // Keep this outer catch for Gson errors or initial URI open errors
+            Log.e("SaveToUri", "Initial URI open or Gson error: $uri - ${e.message}", e)
+            withContext(Dispatchers.Main) {
+                _toastMessage.value = "Failed to export (prepare): ${e.localizedMessage}"
+            }
         }
     }
 
@@ -1261,7 +1276,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         if (currentSetNumber < totalSets) {
             currentRepNumber = 1
             currentSetNumber++
-            return TimerState.SetResting(setRestMillis, setRestMillis)
+            if (setRestMillis > 0)
+                return TimerState.SetResting(setRestMillis, setRestMillis)
+            else
+                return determineNextStateAfterSetRest()
         } else {
             return TimerState.Finished
         }
@@ -1341,16 +1359,17 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             val imagesDir = File(getApplication<Application>().filesDir, userImagesDirectory)
             if (imagesDir.exists() && imagesDir.isDirectory) {
                 val userFiles = imagesDir.listFiles { file ->
-                    file.isFile && (file.name.endsWith(".jpg", true) || file.name.endsWith(
-                        ".png",
-                        true
-                    ))
+                    file.isFile && (
+                            file.name.endsWith(".jpg", true) ||
+                                    file.name.endsWith(".png", true) ||
+                                    file.name.endsWith(".gif", true) // <-- ADD GIF SUPPORT HERE
+                            )
                 } ?: arrayOf()
 
                 val userImageOptions = userFiles.map { file ->
                     ImageOption(
                         file.nameWithoutExtension.replace('_', ' ')
-                        .replaceFirstChar { it.titlecase() } + " (User)", 0, file.name)
+                            .replaceFirstChar { it.titlecase() } + " (User)", 0, file.name)
                 }
                 withContext(Dispatchers.Main) {
                     // Add user images to the existing list and re-sort
