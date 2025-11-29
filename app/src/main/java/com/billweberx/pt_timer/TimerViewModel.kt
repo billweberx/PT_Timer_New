@@ -42,7 +42,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
     private val appStateFilename = "app_state.json"
 
-    //  private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
+    val userImagesDirectory = "user_images"
+
     private var timerJob: Job? = null
     private var countdownJob: Job? = null
 
@@ -103,6 +104,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var showReplaceConfirmationDialog by mutableStateOf(false)
         private set
+    private val _showOverwriteImageConfirmDialog = MutableStateFlow<ImageOption?>(null)
+    val showOverwriteImageConfirmDialog: StateFlow<ImageOption?> =
+        _showOverwriteImageConfirmDialog.asStateFlow()
     private val gson = GsonBuilder().setPrettyPrinting().create()
 
     val defaultOption = SpinnerOption("N/A")
@@ -112,6 +116,14 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         initializeImages()
         initializeBundles()
         loadAppState() // Simplified initialization
+    }
+
+    fun dismissOverwriteImageConfirmDialog() {
+        _showOverwriteImageConfirmDialog.value = null
+    }
+
+    fun showOverwriteImageConfirmDialog(imageOption: ImageOption) {
+        _showOverwriteImageConfirmDialog.value = imageOption
     }
 
     fun onToastShown() {
@@ -321,7 +333,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                                 imageOptions.find { it.resourceId == setup.config.imageResId }
                             // Create a new config with the correct resourceName.
                             val migratedConfig =
-                                setup.config.copy(imageResName = foundImage?.resourceName ?: "none")
+                                setup.config.copy(imageResName = foundImage?.storageName ?: "none")
                             // Return a new setup object with the migrated config.
                             setup.copy(config = migratedConfig)
                         } else {
@@ -414,7 +426,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun addOrUpdateSetup(name: String) {
         if (name.isBlank()) return
         val newConfig = configState.copy(
-            imageResName = selectedImage.resourceName,
+            imageResName = selectedImage.storageName,
             bandColor = selectedBandColor.value,
             weightLbs = selectedWeight.value,
         )
@@ -501,7 +513,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         selectedGetReadySound =
             soundOptions.find { it.resourceName == setup.getReadySound } ?: defaultSound
         selectedImage =
-            imageOptions.find { it.resourceName == setup.config.imageResName } ?: defaultImage
+            imageOptions.find { it.storageName == setup.config.imageResName } ?: defaultImage
         selectedBandColor =
             bandColorOptions.find { it.value == setup.config.bandColor } ?: defaultOption
         selectedWeight = weightOptions.find { it.value == setup.config.weightLbs } ?: defaultOption
@@ -681,12 +693,205 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun getFileName(uri: Uri): String? {
+        val contentResolver = getApplication<Application>().contentResolver
+        var result: String? = null
+        if (uri.scheme == "content") {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex =
+                        cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1) {
+                        result = cursor.getString(nameIndex)
+                    }
+                }
+            }
+        }
+        if (result == null) {
+            result = uri.path
+            val cut = result?.lastIndexOf('/')
+            if (cut != -1) {
+                result = result?.substring(cut!! + 1)
+            }
+        }
+        return result
+    }
+
+    fun saveUserImage(imageUri: Uri, overwriteConfirmed: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val contentResolver = getApplication<Application>().contentResolver
+            val imagesDir = File(getApplication<Application>().filesDir, userImagesDirectory)
+            if (!imagesDir.exists()) {
+                imagesDir.mkdirs() // Create the directory if it doesn't exist
+            }
+
+            // Derive the target display name and filename based on user input
+            val originalBaseName = getFileName(imageUri)?.substringBeforeLast('.') ?: "User Image"
+            val fileExtension = getFileName(imageUri)?.substringAfterLast('.', "")
+            val targetDisplayName = "$originalBaseName (User)" // The desired display name
+            val targetStorageFileName = "${
+                originalBaseName.replace(
+                    ' ',
+                    '_'
+                )
+            }_user.${fileExtension?.ifBlank { "jpg" }}" // Unique, but without timestamp
+
+            val outputFile = File(imagesDir, targetStorageFileName)
+
+            if (outputFile.exists() && !overwriteConfirmed) {
+                // File exists and overwrite not confirmed, show dialog
+                withContext(Dispatchers.Main) {
+                    // Find the existing ImageOption that corresponds to this file name for the dialog
+                    val existingImageOption =
+                        imageOptions.find { it.storageName == targetStorageFileName }
+                    showOverwriteImageConfirmDialog(
+                        existingImageOption ?: ImageOption(
+                            targetDisplayName,
+                            0,
+                            targetStorageFileName
+                        )
+                    )
+                }
+                return@launch
+            }
+            performSaveUserImage(imageUri, targetDisplayName, targetStorageFileName)
+            try {
+                contentResolver.openInputStream(imageUri)?.use { inputStream ->
+                    outputFile.outputStream().use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+
+                val newImageOption = ImageOption(targetDisplayName, 0, targetStorageFileName)
+                withContext(Dispatchers.Main) {
+                    // Remove old entry if it existed and was overwritten
+                    imageOptions =
+                        imageOptions.filter { it.storageName != newImageOption.storageName }
+                    // Add the new/updated image and sort
+                    imageOptions = (imageOptions + newImageOption).sortedBy { it.displayName }
+                    selectedImage = newImageOption // Select the newly added/overwritten image
+                    configState = configState.copy(
+                        imageResName = newImageOption.storageName,
+                        imageDisplayName = newImageOption.displayName
+                    ) // Update config state
+                    _toastMessage.value = "Image '${targetDisplayName}' saved successfully!"
+                    // Dismiss dialog if it was showing
+                    dismissOverwriteImageConfirmDialog()
+                }
+            } catch (e: Exception) {
+                Log.e("SaveUserImage", "Failed to save user image: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Failed to save image: ${e.localizedMessage}"
+                    dismissOverwriteImageConfirmDialog()
+                }
+            }
+        }
+    }
+
+    // Private helper function to perform the actual saving, used after confirmation
+    private suspend fun performSaveUserImage(
+        imageUri: Uri,
+        targetDisplayName: String,
+        targetStorageFileName: String
+    ) {
+        val contentResolver = getApplication<Application>().contentResolver
+        val imagesDir = File(getApplication<Application>().filesDir, userImagesDirectory)
+        val outputFile = File(imagesDir, targetStorageFileName)
+
+        try {
+            contentResolver.openInputStream(imageUri)?.use { inputStream ->
+                outputFile.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+
+            val newImageOption = ImageOption(targetDisplayName, 0, targetStorageFileName)
+            withContext(Dispatchers.Main) {
+                // Remove old entry if it existed and was overwritten
+                imageOptions = imageOptions.filter { it.storageName != newImageOption.storageName }
+                // Add the new/updated image and sort
+                imageOptions = (imageOptions + newImageOption).sortedBy { it.displayName }
+                selectedImage = newImageOption
+                configState = configState.copy(
+                    imageResName = newImageOption.storageName,
+                    imageDisplayName = newImageOption.displayName
+                )
+                _toastMessage.value = "Image '${targetDisplayName}' saved successfully!"
+                dismissOverwriteImageConfirmDialog()
+            }
+        } catch (e: Exception) {
+            Log.e("PerformSaveUserImage", "Failed to save user image: ${e.message}", e)
+            withContext(Dispatchers.Main) {
+                _toastMessage.value = "Failed to save image: ${e.localizedMessage}"
+                dismissOverwriteImageConfirmDialog()
+            }
+        }
+    }
+
+    fun deleteUserImage(imageOption: ImageOption) {
+        if (imageOption.resourceId != 0 || !imageOption.displayName.contains("(User)")) {
+            _toastMessage.value = "Only user-added images (ending with '(User)') can be deleted."
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val imagesDir = File(getApplication<Application>().filesDir, userImagesDirectory)
+            val imageFile =
+                File(imagesDir, imageOption.storageName) // resourceName stores the unique filename
+
+            if (imageFile.exists()) {
+                try {
+                    val deleted = imageFile.delete()
+                    withContext(Dispatchers.Main) {
+                        if (deleted) {
+                            _toastMessage.value = "Image '${imageOption.displayName}' deleted."
+                            // Remove from options list
+                            imageOptions =
+                                imageOptions.filter { it.storageName != imageOption.storageName }
+                                    .sortedBy { it.displayName }
+                            // If the deleted image was active, revert to defaultImage and update config
+                            if (selectedImage.storageName == imageOption.storageName) {
+                                selectedImage = defaultImage
+                                configState =
+                                    configState.copy(imageResName = defaultImage.storageName)
+                            }
+                            // Update any setups that were using this image
+                            _setups.value = _setups.value.map { setup ->
+                                if (setup.config.imageResName == imageOption.storageName) {
+                                    setup.copy(config = setup.config.copy(imageResName = defaultImage.storageName))
+                                } else {
+                                    setup
+                                }
+                            }
+                            saveAppState() // Save state after removing image reference from setups
+                        } else {
+                            _toastMessage.value =
+                                "Failed to delete image file: '${imageOption.displayName}'."
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(
+                        "DeleteUserImage",
+                        "Error deleting image '${imageOption.displayName}': ${e.message}",
+                        e
+                    )
+                    withContext(Dispatchers.Main) {
+                        _toastMessage.value = "Error deleting image: ${e.localizedMessage}"
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Image file '${imageOption.displayName}' not found."
+                }
+            }
+        }
+    }
+
     fun saveBundle(bundleName: String) {
         if (bundleName.isBlank()) {
             _toastMessage.value = "Bundle name cannot be empty."
             return
         }
-
         viewModelScope.launch(Dispatchers.IO) {
             val userBundlesDir = File(getApplication<Application>().filesDir, "user_bundles")
             if (!userBundlesDir.exists()) {
@@ -1127,12 +1332,32 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     val resourceId = field.getInt(null)
                     val displayName =
                         field.name.replace('_', ' ').replaceFirstChar { it.titlecase() }
-                    val resourceName = field.name // The raw field name, which matches your JSON
-                    allImages.add(ImageOption(displayName, resourceId, resourceName))
+                    allImages.add(ImageOption(displayName, resourceId, field.name))
                 } catch (_: Exception) {
                 }
             }
-        imageOptions = allImages.sortedBy { it.resourceName }
+        imageOptions = allImages.sortedBy { it.storageName }
+        viewModelScope.launch(Dispatchers.IO) {
+            val imagesDir = File(getApplication<Application>().filesDir, userImagesDirectory)
+            if (imagesDir.exists() && imagesDir.isDirectory) {
+                val userFiles = imagesDir.listFiles { file ->
+                    file.isFile && (file.name.endsWith(".jpg", true) || file.name.endsWith(
+                        ".png",
+                        true
+                    ))
+                } ?: arrayOf()
+
+                val userImageOptions = userFiles.map { file ->
+                    ImageOption(
+                        file.nameWithoutExtension.replace('_', ' ')
+                        .replaceFirstChar { it.titlecase() } + " (User)", 0, file.name)
+                }
+                withContext(Dispatchers.Main) {
+                    // Add user images to the existing list and re-sort
+                    imageOptions = (imageOptions + userImageOptions).sortedBy { it.displayName }
+                }
+            }
+        }
     }
 
     private fun initializeBundles() {

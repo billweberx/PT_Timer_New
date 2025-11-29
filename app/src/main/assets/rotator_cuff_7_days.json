@@ -1,5 +1,5 @@
 {
-  "activeSetupName": "seated scapular retraction",
+  "activeSetupName": "dowell- assisted overhead reach",
   "allSetups": [
     {
       "completeSound": "complete",
@@ -8,7 +8,7 @@
         "exerciseTime": "3",
         "getReadyTime": "5",
         "imageResId": 2131165319,
-        "imageResName": "none",
+        "imageResName": "dowel_assisted_overhead_reach",
         "instructions": "Starting position: begin lying on your back, holding a dowel, with your palms facing down. With control, lift the dowel overhead until you feel a comfortable stretch in your shoulders. Pause briefly, and return to the starting position.",
         "moveFromTime": "1",
         "moveToTime": "1",
@@ -97,7 +97,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "7",
         "totalTime": "0.0",
-        "weightLbs": "12"
+        "weightLbs": "6"
       },
       "getReadySound": "move_to_start_position",
       "name": "serratus punch",
@@ -263,11 +263,22 @@
     }
   ],
   "bandColorOptions": [
-    "N/A"
+    "N/A",
+    "blue",
+    "green",
+    "red",
+    "yellow"
   ],
   "weightOptions": [
+    "1.5",
+    "3.5",
     "6",
+    "10",
     "12",
+    "17",
+    "20",
+    "30",
+    "40",
     "N/A"
   ]
 }

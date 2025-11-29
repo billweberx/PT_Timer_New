@@ -71,6 +71,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -82,9 +84,11 @@ import com.billweberx.pt_timer.TimerViewModel
 import com.billweberx.pt_timer.data.ImageOption
 import com.billweberx.pt_timer.data.SpinnerOption
 import com.billweberx.pt_timer.pressable
+import com.billweberx.pt_timer.util.AppSoundPlayer
 
 import androidx.compose.material3.ButtonDefaults
 import com.billweberx.pt_timer.data.BundleOption
+import java.io.File
 
 @SuppressLint("LocalContextResourcesRead", "DiscouragedApi")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,9 +157,18 @@ fun SetupScreen(
             }
         }
     )
+
+    var imageUriToSave by remember { mutableStateOf<Uri?>(null) } // Stores the URI that triggered the save
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                viewModel.saveUserImage(it) // Call ViewModel to save the selected image
+            } ?: Log.d("ImagePicker", "User cancelled image picker.")
+        }
+    )
     Scaffold(
         topBar = {
-            // --- 2. MOVE: The top bar content is now here, fixed at the top ---
             TopAppBar(
                 title = {
                     Text(
@@ -229,31 +242,56 @@ fun SetupScreen(
                         label = "Get Ready",
                         soundOptions = viewModel.soundOptions,
                         selectedSound = viewModel.selectedGetReadySound,
-                        onSoundSelected = { viewModel.selectedGetReadySound = it }
+                        onSoundSelected = { newSoundOption -> // <-- UPDATED LAMBDA
+                            viewModel.selectedGetReadySound = newSoundOption
+                            if (newSoundOption.resourceId != -1) { // Play sound if not "None"
+                                AppSoundPlayer.playSound(context, newSoundOption.resourceId)
+                            }
+                        }
                     )
                     SoundDropdown(
                         label = "Start Reps",
                         soundOptions = viewModel.soundOptions,
                         selectedSound = viewModel.selectedStartRepSound,
-                        onSoundSelected = { viewModel.selectedStartRepSound = it }
+                        onSoundSelected = { newSoundOption -> // <-- UPDATED LAMBDA
+                            viewModel.selectedStartRepSound = newSoundOption
+                            if (newSoundOption.resourceId != -1) {
+                                AppSoundPlayer.playSound(context, newSoundOption.resourceId)
+                            }
+                        }
                     )
                     SoundDropdown(
                         label = "Start Rest",
                         soundOptions = viewModel.soundOptions,
                         selectedSound = viewModel.selectedStartRestSound,
-                        onSoundSelected = { viewModel.selectedStartRestSound = it }
+                        onSoundSelected = { newSoundOption -> // <-- UPDATED LAMBDA
+                            viewModel.selectedStartRestSound = newSoundOption
+                            if (newSoundOption.resourceId != -1) {
+                                AppSoundPlayer.playSound(context, newSoundOption.resourceId)
+                            }
+                        }
                     )
                     SoundDropdown(
                         label = "Start Set Rest",
                         soundOptions = viewModel.soundOptions,
                         selectedSound = viewModel.selectedStartSetRestSound,
-                        onSoundSelected = { viewModel.selectedStartSetRestSound = it }
+                        onSoundSelected = { newSoundOption -> // <-- UPDATED LAMBDA
+                            viewModel.selectedStartSetRestSound = newSoundOption
+                            if (newSoundOption.resourceId != -1) {
+                                AppSoundPlayer.playSound(context, newSoundOption.resourceId)
+                            }
+                        }
                     )
                     SoundDropdown(
                         label = "Sets Complete",
                         soundOptions = viewModel.soundOptions,
                         selectedSound = viewModel.selectedCompleteSound,
-                        onSoundSelected = { viewModel.selectedCompleteSound = it }
+                        onSoundSelected = { newSoundOption -> // <-- UPDATED LAMBDA
+                            viewModel.selectedCompleteSound = newSoundOption
+                            if (newSoundOption.resourceId != -1) {
+                                AppSoundPlayer.playSound(context, newSoundOption.resourceId)
+                            }
+                        }
                     )
                 }
             }
@@ -294,9 +332,37 @@ fun SetupScreen(
                             viewModel.selectedImage = newSelection
                             // 2. Update the central configState with the resourceName so the change will be saved
                             viewModel.configState =
-                                viewModel.configState.copy(imageResName = newSelection.resourceName)
+                                viewModel.configState.copy(imageResName = newSelection.storageName)
+                        },
+                        onDeleteUserImage = { imageOption -> // <-- NEW PARAMETER
+                            viewModel.deleteUserImage(imageOption)
                         }
                     )
+                    Spacer(modifier = Modifier.height(16.dp)) // Space above button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        val addImageInteractionSource = remember { MutableInteractionSource() }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.tertiary,
+                            contentColor = MaterialTheme.colorScheme.onTertiary,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = addImageInteractionSource,
+                                onClick = { imagePickerLauncher.launch("image/*") } // Launch image picker
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
+                            ) {
+                                Text("Add Image")
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp)) // Space below button
                     Spacer(modifier = Modifier.height(2.dp))
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     //
@@ -910,26 +976,66 @@ fun SetupScreen(
             }
             AnimatedVisibility(visible = isExerciseInstructionsExpanded) {
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                    val context = LocalContext.current // Obtain the context within the Composable
-                    // Dynamically get the drawable ID from the resourceName.
-                    val imageResourceId = context.resources.getIdentifier(
-                        viewModel.selectedImage.resourceName, // The resource name (e.g., "dowel_assisted_overhead_reach")
-                        "drawable", // The type of resource
-                        context.packageName // The package name
-                    )
 
-                    // ONLY display the Image composable if a valid (non-zero) resource ID is found.
-                    if (imageResourceId != 0) {
-                        val painter = painterResource(id = imageResourceId)
-                        Image(
-                            painter = painter,
-                            contentDescription = "Exercise Image: ${viewModel.selectedImage.name}",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height),
-                            contentScale = ContentScale.FillWidth
+                    val context = LocalContext.current // Obtain the context within the Composable
+
+
+                    val selectedImageOption = viewModel.selectedImage
+                    if (selectedImageOption.resourceId != 0) {
+                        // It's a factory (drawable) image
+                        val imageResourceId = context.resources.getIdentifier(
+                            selectedImageOption.storageName,
+                            "drawable",
+                            context.packageName
                         )
+                        if (imageResourceId != 0) {
+                            val painter = painterResource(id = imageResourceId)
+                            Image(
+                                painter = painter,
+                                contentDescription = "Exercise Image: ${selectedImageOption.displayName}",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height),
+                                contentScale = ContentScale.FillWidth
+                            )
+                        } else {
+                            // Fallback for factory images if resourceId becomes invalid for some reason
+                            Text(
+                                "Image not found: ${selectedImageOption.displayName}",
+                                color = Color.Red
+                            )
+                        }
+                    } else if (selectedImageOption.storageName != "none") {
+                        // It's a user-added image (resourceId == 0)
+                        val userImageFile = File(
+                            context.filesDir,
+                            "${viewModel.userImagesDirectory}/${selectedImageOption.storageName}"
+                        )
+                        if (userImageFile.exists()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(userImageFile) // Load from file
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "User Exercise Image: ${selectedImageOption.displayName}",
+                                modifier = Modifier
+                                    .fillMaxWidth(),
+                                contentScale = ContentScale.FillWidth,
+                                error = painterResource(id = android.R.drawable.ic_menu_gallery) // Fallback for loading errors
+                            )
+                        } else {
+                            Text(
+                                "User image file not found: ${selectedImageOption.displayName}",
+                                color = Color(0xFFFFA000)
+                            ) // Amber color
+                        }
+                    } else {
+                        // selectedImageOption.resourceName == "none", do not display an image
+                        Text("No image selected.", color = Color.Gray)
                     }
+
+
+
                     OutlinedTextField(
                         value = viewModel.configState.instructions,
                         onValueChange = { newText ->// Create a copy of the current config with the new text
@@ -945,136 +1051,152 @@ fun SetupScreen(
                         minLines = 3
                     )
                     Spacer(modifier = Modifier.height(50.dp))
+                }  // end of column
+            }  // end of AnimatedVisibility
+        }  // end of column
+        if (showClearConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { setShowClearConfirmDialog(false) },
+                title = { Text("Confirm Clear") },
+                text = { Text("Are you sure you want to delete the entire setup list?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.clearAllSetups()
+                            newSetupName = ""
+                            setShowClearConfirmDialog(false)
+                        }
+                    ) { Text("Yes, Clear All") }
+                },
+                dismissButton = {
+                    Button(onClick = { setShowClearConfirmDialog(false) }) { Text("No") }
                 }
-            }
+            )
         }
-    }
-    if (showClearConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { setShowClearConfirmDialog(false) },
-            title = { Text("Confirm Clear") },
-            text = { Text("Are you sure you want to delete the entire setup list?") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.clearAllSetups()
-                        newSetupName = ""
-                        setShowClearConfirmDialog(false)
-                    }
-                ) { Text("Yes, Clear All") }
-            },
-            dismissButton = {
-                Button(onClick = { setShowClearConfirmDialog(false) }) { Text("No") }
-            }
-        )
-    }
-    //
-    // Load Bundle Options Dialog (Merge or Replace)
-    //
-    if (viewModel.showLoadBundleOptionsDialog) {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissLoadBundleOptions() },
-            title = { Text("Load Bundle") },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Instruction text
-                    Text(
-                        text = "Choose how to load '${viewModel.selectedBundle?.name ?: "Selected Bundle"}':", // <-- CHANGED TO selectedBundle
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Merge Option Button
-                    Button(
-                        onClick = {
-                            // --- VVV --- THIS IS THE FINAL, CORRECT FIX --- VVV ---
-                            // Pass the selected bundle (which is guaranteed non-null when this dialog is shown)
-                            viewModel.performBundleLoad(
-                                viewModel.selectedBundle!!,
-                                TimerViewModel.BundleLoadAction.MERGE
-                            )
-                            // --- ^^^ --- END OF THE FIX --- ^^^ ---
-                        },
-                        modifier = Modifier.fillMaxWidth(0.8f) // Make buttons take 80% width
+        //
+        // Load Bundle Options Dialog (Merge or Replace)
+        //
+        if (viewModel.showLoadBundleOptionsDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissLoadBundleOptions() },
+                title = { Text("Load Bundle") },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Merge (Add to Current)")
-                    }
-
-                    // Replace Option Button
-                    Button(
-                        onClick = {
-                            viewModel.dismissLoadBundleOptions() // Dismiss this dialog first
-                            viewModel.showReplaceConfirmation() // Show confirmation dialog next
-                        },
-                        modifier = Modifier.fillMaxWidth(0.8f), // Make buttons take 80% width
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer, // Visually distinguish "Replace"
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        // Instruction text
+                        Text(
+                            text = "Choose how to load '${viewModel.selectedBundle?.name ?: "Selected Bundle"}':", // <-- CHANGED TO selectedBundle
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                    ) {
-                        Text("Replace (Clear Current)")
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Merge Option Button
+                        Button(
+                            onClick = {
+                                // --- VVV --- THIS IS THE FINAL, CORRECT FIX --- VVV ---
+                                // Pass the selected bundle (which is guaranteed non-null when this dialog is shown)
+                                viewModel.performBundleLoad(
+                                    viewModel.selectedBundle!!,
+                                    TimerViewModel.BundleLoadAction.MERGE
+                                )
+                                // --- ^^^ --- END OF THE FIX --- ^^^ ---
+                            },
+                            modifier = Modifier.fillMaxWidth(0.8f) // Make buttons take 80% width
+                        ) {
+                            Text("Merge (Add to Current)")
+                        }
+
+                        // Replace Option Button
+                        Button(
+                            onClick = {
+                                viewModel.dismissLoadBundleOptions() // Dismiss this dialog first
+                                viewModel.showReplaceConfirmation() // Show confirmation dialog next
+                            },
+                            modifier = Modifier.fillMaxWidth(0.8f), // Make buttons take 80% width
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer, // Visually distinguish "Replace"
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Text("Replace (Clear Current)")
+                        }
+                    }
+                },
+                confirmButton = { // Only the Cancel button is in the dedicated button slot
+                    TextButton(onClick = {
+                        viewModel.selectedBundle =
+                            null // <-- Clear selected bundle on explicit cancel
+                        viewModel.dismissLoadBundleOptions()
+                    }) {
+                        Text("Cancel")
                     }
                 }
-            },
-            confirmButton = { // Only the Cancel button is in the dedicated button slot
-                TextButton(onClick = {
-                    viewModel.selectedBundle = null // <-- Clear selected bundle on explicit cancel
-                    viewModel.dismissLoadBundleOptions()
-                }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
+            )
+        }
 
-    //
-    // Replace Confirmation Dialog
-    //
-    if (viewModel.showReplaceConfirmationDialog) {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissReplaceConfirmation() },
-            title = { Text("Confirm Replace") },
-            text = { Text("Are you sure you want to replace all current exercises? This cannot be undone.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.performBundleLoad(
-                        viewModel.selectedBundle!!,
-                        TimerViewModel.BundleLoadAction.REPLACE
-                    )
-                    viewModel.dismissReplaceConfirmation()
-                }) {
-                    Text("Replace")
+        //
+        // Replace Confirmation Dialog
+        //
+        if (viewModel.showReplaceConfirmationDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissReplaceConfirmation() },
+                title = { Text("Confirm Replace") },
+                text = { Text("Are you sure you want to replace all current exercises? This cannot be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.performBundleLoad(
+                            viewModel.selectedBundle!!,
+                            TimerViewModel.BundleLoadAction.REPLACE
+                        )
+                        viewModel.dismissReplaceConfirmation()
+                    }) {
+                        Text("Replace")
+                    }
+                },
+                dismissButton = { // Using dismissButton for cancel
+                    TextButton(onClick = {
+                        viewModel.selectedBundle = null // Clear selected bundle on explicit cancel
+                        viewModel.dismissLoadBundleOptions()
+                    }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        DeleteBundleConfirmationDialog(
+            showDialog = showDeleteBundleConfirmDialog,
+            onDismiss = { setShowDeleteBundleConfirmDialog(false) },
+            onConfirm = { bundleToDelete ->
+                viewModel.deleteUserBundle(bundleToDelete)
+                // If the deleted bundle was the selected one, clear the spinner
+                if (viewModel.selectedBundle?.filePath == bundleToDelete.filePath) {
+                    viewModel.selectedBundle = null
                 }
             },
-            dismissButton = { // Using dismissButton for cancel
-                TextButton(onClick = {
-                    viewModel.selectedBundle = null // Clear selected bundle on explicit cancel
-                    viewModel.dismissLoadBundleOptions()
-                }) {
-                    Text("Cancel")
-                }
-            }
+            selectedBundle = viewModel.selectedBundle // Pass the currently selected bundle from ViewModel
         )
-    }
 
-    DeleteBundleConfirmationDialog(
-        showDialog = showDeleteBundleConfirmDialog,
-        onDismiss = { setShowDeleteBundleConfirmDialog(false) },
-        onConfirm = { bundleToDelete ->
-            viewModel.deleteUserBundle(bundleToDelete)
-            // If the deleted bundle was the selected one, clear the spinner
-            if (viewModel.selectedBundle?.filePath == bundleToDelete.filePath) {
-                viewModel.selectedBundle = null
-            }
-        },
-        selectedBundle = viewModel.selectedBundle // Pass the currently selected bundle from ViewModel
-    )
-}
+        ImageOverwriteConfirmationDialog(
+            showDialog = viewModel.showOverwriteImageConfirmDialog.collectAsState().value != null,
+            onDismiss = { viewModel.dismissOverwriteImageConfirmDialog() },
+            onConfirm = { originalUri, _ ->
+                viewModel.saveUserImage(
+                    originalUri,
+                    overwriteConfirmed = true
+                ) // Re-attempt save with overwrite flag
+            },
+            imageToOverwrite = viewModel.showOverwriteImageConfirmDialog.collectAsState().value,
+            originalImageUri = imageUriToSave // Pass the original URI
+        )
+
+    }  // end of innerPadding lambda
+}  // end of SetupScreen composable
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1095,6 +1217,40 @@ fun DeleteBundleConfirmationDialog(
                     onDismiss() // Dismiss the dialog after action
                 }) {
                     Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ImageOverwriteConfirmationDialog(
+    showDialog: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Uri, ImageOption) -> Unit, // New callback: passes the original URI and the target ImageOption
+    imageToOverwrite: ImageOption?, // The ImageOption to overwrite
+    originalImageUri: Uri? // The URI of the image the user is currently trying to save
+) {
+    if (showDialog && imageToOverwrite != null && originalImageUri != null) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Confirm Overwrite Image") },
+            text = { Text("An image named '${imageToOverwrite.displayName}' already exists. Do you want to replace it?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onConfirm(
+                        originalImageUri,
+                        imageToOverwrite
+                    ) // Confirm overwrite with original URI
+                    onDismiss()
+                }) {
+                    Text("Overwrite")
                 }
             },
             dismissButton = {
@@ -1160,17 +1316,17 @@ fun ImageDropdown(
     options: List<ImageOption>,
     selectedOption: ImageOption,
     onOptionSelected: (ImageOption) -> Unit,
+    onDeleteUserImage: (ImageOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val (isExpanded, setExpanded) = remember { mutableStateOf(false) }
-    // var isExpanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(
         expanded = isExpanded,
         onExpandedChange = { setExpanded(it) },
         modifier = modifier
     ) {
         OutlinedTextField(
-            value = selectedOption.name,
+            value = selectedOption.displayName,
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },
@@ -1187,17 +1343,38 @@ fun ImageDropdown(
             onDismissRequest = { setExpanded(false) }
         ) {
             options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option.name) },
-                    onClick = {
-                        onOptionSelected(option)
-                        setExpanded(false)
+                Row( // Wrap DropdownMenuItem and Icon in a Row
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(option.displayName) },
+                        onClick = {
+                            onOptionSelected(option)
+                            setExpanded(false)
+                        },
+                        modifier = Modifier.weight(1f) // Make text take available space
+                    )
+                    // Only show delete icon for user-added images (identified by "(User)" in name)
+                    if (option.displayName.contains(" (User)")) { // Check for (User) tag
+                        IconButton(
+                            onClick = {
+                                onDeleteUserImage(option)
+                                setExpanded(false) // Close dropdown after deletion
+                            },
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete ${option.displayName}",
+                                tint = Color.Red
+                            )
+                        }
                     }
-                )
+                }
             }
         }
     }
-
 }
 
 

@@ -1,5 +1,5 @@
 {
-  "activeSetupName": "Supported Dumbbell Row - Right",
+  "activeSetupName": "dowell- assisted overhead reach",
   "allSetups": [
     {
       "completeSound": "complete",
@@ -109,7 +109,7 @@
       "completeSound": "complete",
       "config": {
         "bandColor": "N/A",
-        "exerciseTime": "3",
+        "exerciseTime": "2",
         "getReadyTime": "5",
         "imageResId": 2131165430,
         "imageResName": "sidelying_shoulder_er_right",
@@ -135,7 +135,7 @@
       "completeSound": "complete",
       "config": {
         "bandColor": "N/A",
-        "exerciseTime": "3",
+        "exerciseTime": "1.5",
         "getReadyTime": "5",
         "imageResId": 2131165432,
         "imageResName": "sidelying_shoulder_flexion_right",
@@ -264,33 +264,7 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Red",
-        "exerciseTime": "1",
-        "getReadyTime": "5",
-        "imageResId": 2131165424,
-        "imageResName": "resisted_standing_row",
-        "instructions": "Starting position: anchor a band to a stable surface, and hold the band in both hands. Begin facing the anchor, with your arms in front of you. With control, pull the band toward you, bending your elbows to bring your arms to your side. Pause briefly, and return to the starting position.",
-        "moveFromTime": "1",
-        "moveToTime": "1",
-        "reps": "10",
-        "restTime": "1",
-        "setRestTime": "15",
-        "sets": "3",
-        "timesPerDay": "1",
-        "timesPerWeek": "3",
-        "totalTime": "0.0",
-        "weightLbs": "N/A"
-      },
-      "getReadySound": "move_to_start_position",
-      "name": "Resisted Standing Row",
-      "startRepSound": "start",
-      "startRestSound": "rest",
-      "startSetRestSound": "set_rest"
-    },
-    {
-      "completeSound": "complete",
-      "config": {
-        "bandColor": "Red",
+        "bandColor": "red",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165425,
@@ -316,7 +290,33 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Blue",
+        "bandColor": "red",
+        "exerciseTime": "1",
+        "getReadyTime": "5",
+        "imageResId": 2131165424,
+        "imageResName": "resisted_standing_row",
+        "instructions": "Starting position: anchor a band to a stable surface, and hold the band in both hands. Begin facing the anchor, with your arms in front of you. With control, pull the band toward you, bending your elbows to bring your arms to your side. Pause briefly, and return to the starting position.",
+        "moveFromTime": "1",
+        "moveToTime": "1",
+        "reps": "10",
+        "restTime": "1",
+        "setRestTime": "15",
+        "sets": "3",
+        "timesPerDay": "1",
+        "timesPerWeek": "3",
+        "totalTime": "0.0",
+        "weightLbs": "N/A"
+      },
+      "getReadySound": "move_to_start_position",
+      "name": "Resisted Standing Row",
+      "startRepSound": "start",
+      "startRestSound": "rest",
+      "startSetRestSound": "set_rest"
+    },
+    {
+      "completeSound": "complete",
+      "config": {
+        "bandColor": "blue",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165420,
@@ -342,7 +342,7 @@
     {
       "completeSound": "complete",
       "config": {
-        "bandColor": "Green",
+        "bandColor": "green",
         "exerciseTime": "1",
         "getReadyTime": "5",
         "imageResId": 2131165422,
@@ -383,7 +383,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "17"
+        "weightLbs": "20"
       },
       "getReadySound": "move_to_start_position",
       "name": "Supported Dumbbell Row - Right",
@@ -409,7 +409,7 @@
         "timesPerDay": "1",
         "timesPerWeek": "3",
         "totalTime": "0.0",
-        "weightLbs": "4"
+        "weightLbs": "3.5"
       },
       "getReadySound": "move_to_start_position",
       "name": "Standing Scaption With Dumbbells",
@@ -471,19 +471,22 @@
     }
   ],
   "bandColorOptions": [
-    "Blue",
-    "Green",
     "N/A",
-    "Red"
+    "blue",
+    "green",
+    "red",
+    "yellow"
   ],
   "weightOptions": [
-    "0",
     "1.5",
     "3.5",
-    "4",
     "6",
+    "10",
     "12",
     "17",
+    "20",
+    "30",
+    "40",
     "N/A"
   ]
 }

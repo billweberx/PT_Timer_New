@@ -517,7 +517,7 @@ fun PTTimerScreen(
                 ) {
                     // 1. Display the image FIRST, if it exists.
                     val imageResourceId = context.resources.getIdentifier(
-                        viewModel.selectedImage.resourceName, // The resource name (e.g., "dowel_assisted_overhead_reach")
+                        viewModel.selectedImage.storageName, // The resource name (e.g., "dowel_assisted_overhead_reach")
                         "drawable", // The type of resource
                         context.packageName // The package name
                     )
@@ -527,7 +527,7 @@ fun PTTimerScreen(
                         val painter = painterResource(id = imageResourceId)
                         Image(
                             painter = painter,
-                            contentDescription = "Exercise Image: ${viewModel.selectedImage.name}", // Use selectedImage.name for accurate content description
+                            contentDescription = "Exercise Image: ${viewModel.selectedImage.displayName}", // Use selectedImage.name for accurate content description
                             modifier = Modifier
                                 .fillMaxWidth() // Force the width to match the screen.
                                 .aspectRatio(painter.intrinsicSize.width / painter.intrinsicSize.height), // Force height based on aspect ratio.

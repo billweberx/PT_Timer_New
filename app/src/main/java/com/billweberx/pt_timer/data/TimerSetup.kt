@@ -26,6 +26,7 @@ data class SetupConfig(
     val instructions: String = "",
     val imageResName: String = "none",
     val imageResId: Int? = 0,
+    val imageDisplayName: String = "None",
     val bandColor: String = "N/A",
     val weightLbs: String = "N/A",
     val timesPerDay: String = "1",

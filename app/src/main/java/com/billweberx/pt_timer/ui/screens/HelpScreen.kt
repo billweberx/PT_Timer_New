@@ -481,6 +481,23 @@ fun HelpScreen(
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Text(
+                            text = "•   Save As Bundle Name: Enter a unique name for your current collection of exercises. " +
+                                    "This will save them as a new user-created bundle to your device, making them available in the 'Load Bundle' dropdown. " +
+                                    "If a bundle with that name already exists, it will not be saved.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "•   Save Bundle: Tap this button to save your current collection of exercises under the name provided in 'Save As Bundle Name'. " +
+                                    "The newly saved bundle will automatically be selected in the 'Load Bundle' dropdown.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "•   Delete Bundle: If a user-created bundle is currently selected in the 'Load Bundle' dropdown, " +
+                                    "this button will be active. Tap it to permanently delete the selected user bundle from your device. " +
+                                    "You will be asked for confirmation. Factory bundles cannot be deleted.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
                             text = "•   Exercise List: Below the 'Load Bundle' selector, you'll see your current list of saved exercises.",
                             style = MaterialTheme.typography.bodyMedium
                         )
