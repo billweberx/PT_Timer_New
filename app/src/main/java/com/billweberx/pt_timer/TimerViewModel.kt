@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -34,6 +35,13 @@ import java.io.File
 import com.billweberx.pt_timer.data.ImageOption
 import com.billweberx.pt_timer.data.SpinnerOption
 import com.google.gson.JsonParser
+import com.billweberx.pt_timer.data.WorkoutLogEntry
+import java.util.Calendar
+import java.text.SimpleDateFormat
+//import java.time.format.DateTimeParseException
+//import java.time.format.DateTimeFormatter
+//import java.time.LocalDate
+import java.util.Locale
 
 
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
@@ -50,12 +58,21 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     // --- State Management ---
     private val _setups = MutableStateFlow<List<TimerSetup>>(emptyList())
     val loadedSetups = _setups.asStateFlow()
+
+    // New state for tracking checked exercises (transient, not saved in AppState)
+    private val _exerciseCheckedStates = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val exerciseCheckedStates: StateFlow<Map<String, Boolean>> = _exerciseCheckedStates.asStateFlow()
+
+    // New state for storing workout log entries
+    private val _workoutLog = MutableStateFlow<List<WorkoutLogEntry>>(emptyList())
+
+
     private var setMasterClock = 0L
     private val _timerScreenState = MutableStateFlow(TimerScreenState())
     val timerScreenState = _timerScreenState.asStateFlow()
     var imageOptions by mutableStateOf<List<ImageOption>>(emptyList())
         private set
-    var selectedImage by mutableStateOf(defaultImage)
+    var selectedImage by mutableStateOf(ImageOption("None", 0, "none"))
     val defaultImage: ImageOption
         get() = imageOptions.firstOrNull { it.resourceId == 0 } ?: ImageOption("None", 0, "none")
 
@@ -67,11 +84,14 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         get() = soundOptions.find { it.displayName.equals("None", ignoreCase = true) }
             ?: SoundOption("None", -1, "none")
 
-    var selectedStartRepSound by mutableStateOf(defaultSound)
-    var selectedStartRestSound by mutableStateOf(defaultSound)
-    var selectedStartSetRestSound by mutableStateOf(defaultSound)
-    var selectedCompleteSound by mutableStateOf(defaultSound)
-    var selectedGetReadySound by mutableStateOf(defaultSound)
+    // Defer initialization for sounds too: Use a placeholder and set correctly in init{}
+    var selectedStartRepSound by mutableStateOf(SoundOption("None", -1, "none")) // <-- CHANGED
+    var selectedStartRestSound by mutableStateOf(SoundOption("None", -1, "none"))
+    var selectedStartSetRestSound by mutableStateOf(SoundOption("None", -1, "none"))
+    var selectedCompleteSound by mutableStateOf(SoundOption("None", -1, "none"))
+    var selectedGetReadySound by mutableStateOf(SoundOption("None", -1, "none"))
+    @Suppress("unused") // Will be used for display/debug later if needed, or cleared
+    val workoutLog: StateFlow<List<WorkoutLogEntry>> = _workoutLog.asStateFlow()
     var activeSetupName by mutableStateOf<String?>("")
     var activeSetup by mutableStateOf<TimerSetup?>(null)
     private val _isExerciseListDirty = MutableStateFlow(false)
@@ -96,7 +116,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     var isBundleDropdownExpanded by mutableStateOf(false)
 
     var continueToNextExercise by mutableStateOf(false)
-    var currentSetupIndex by mutableStateOf(-1) // Index of the currently active setup in _setups list
+    var currentSetupIndex by mutableIntStateOf(-1) // Index of the currently active setup in _setups list
         private set
 
     // State for managing the bundle loading process
@@ -111,17 +131,33 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     val defaultOption = SpinnerOption("N/A")
 
+    // New state for Gym/PT Mode
+    private val _isGymMode = MutableStateFlow(false) // Default to PT Mode (false)
+    val isGymMode: StateFlow<Boolean> = _isGymMode.asStateFlow()
+
+    fun setGymMode(isGym: Boolean) {
+        _isGymMode.value = isGym
+        saveAppState() // Save the preference to disk immediately
+    }
+
     init {
         initializeSounds()
         initializeImages()
         initializeBundles()
         loadAppState() // Simplified initialization
+        selectedImage = defaultImage
+        selectedStartRepSound = defaultSound
+        selectedStartRestSound = defaultSound
+        selectedStartSetRestSound = defaultSound
+        selectedCompleteSound = defaultSound
+        selectedGetReadySound = defaultSound
     }
 
     fun dismissOverwriteImageConfirmDialog() {
         _showOverwriteImageConfirmDialog.value = null
     }
 
+    @Suppress("unused") // Called internally by saveUserImage
     fun showOverwriteImageConfirmDialog(imageOption: ImageOption) {
         _showOverwriteImageConfirmDialog.value = imageOption
     }
@@ -129,6 +165,77 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     fun onToastShown() {
         _toastMessage.value = null
     }
+
+    // New functions for managing exercise checked states
+    fun setExerciseChecked(exerciseName: String, isChecked: Boolean) {
+        _exerciseCheckedStates.update { currentMap ->
+            currentMap.toMutableMap().apply { put(exerciseName, isChecked) }
+        }
+    }
+
+    fun clearExerciseCheckedStates() {
+        _exerciseCheckedStates.value = emptyMap()
+    }
+
+    // New function to clear the workout log
+    @Suppress("unused") // Will be used by UI (e.g., Settings screen)
+    fun clearWorkoutLog() {
+        _workoutLog.value = emptyList()
+    }
+
+    // New function to save checked exercises to the workout log
+    fun saveCheckedExercisesToLog() {
+        val calendar = Calendar.getInstance()
+        val dateFormatter = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+        val timeFormatter = SimpleDateFormat("HH:mm:ss", Locale.US)
+
+        val date = dateFormatter.format(calendar.time)
+        val time = timeFormatter.format(calendar.time)
+        val mode = if (_isGymMode.value) "Gym" else "PT"
+
+        val newLogEntries = mutableListOf<WorkoutLogEntry>()
+
+        _exerciseCheckedStates.value.forEach { (exerciseName, isChecked) ->
+            if (isChecked) {
+                val setup = _setups.value.find { it.name == exerciseName }
+                if (setup != null) {
+                    val logEntry = WorkoutLogEntry(
+                        mode = mode,
+                        date = date,
+                        time = time,
+                        exerciseName = setup.name,
+                        moveToTime = setup.config.moveToTime,
+                        exerciseTime = setup.config.exerciseTime,
+                        moveFromTime = setup.config.moveFromTime,
+                        restTime = setup.config.restTime,
+                        reps = setup.config.reps,
+                        sets = setup.config.sets,
+                        setRestTime = setup.config.setRestTime,
+                        totalTime = setup.config.totalTime,
+                        instructions = setup.config.instructions,
+                        imageResName = setup.config.imageResName,
+                        imageResId = setup.config.imageResId,
+                        imageDisplayName = setup.config.imageDisplayName,
+                        bandColor = setup.config.bandColor,
+                        weightLbs = setup.config.weightLbs,
+                        timesPerDay = setup.config.timesPerDay,
+                        timesPerWeek = setup.config.timesPerWeek,
+                        getReadyTime = setup.config.getReadyTime
+                    )
+                    newLogEntries.add(logEntry)
+                }
+            }
+        }
+
+        _workoutLog.update { currentLog ->
+            currentLog + newLogEntries
+        }
+        saveAppState()
+        // Optionally clear checked states after saving them to the log
+        clearExerciseCheckedStates()
+        _toastMessage.value = "${newLogEntries.size} exercises logged successfully!"
+    }
+
 
     fun onConfigChange(newConfig: SetupConfig) {    // --- Validation Logic ---
         val exerciseTime = newConfig.exerciseTime.toDoubleOrNull() // Check as a Double
@@ -232,6 +339,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                             )
                             selectedBundle =
                                 bundle // <-- SET selectedBundle here for REPLACE success!
+                            clearExerciseCheckedStates() // Clear checked states on bundle replace
                         }
                     }
 
@@ -323,6 +431,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     weightOptions = appState.weightOptions.map { SpinnerOption(it) }
                         .ifEmpty { listOf(defaultOption) }
 
+                    _isGymMode.value = appState.isGymMode // Load gym mode state
+                    _workoutLog.value = appState.workoutLog
+
                     // 1. Check if the loaded data is from an old file.
                     //    We map over the setups to create a new, corrected list.
                     val migratedSetups = appState.allSetups.map { setup ->
@@ -383,7 +494,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 activeSetupName = this.activeSetupName,
                 // Convert List<SpinnerOption> to List<String> for saving
                 bandColorOptions = bandColorOptions.map { it.value },
-                weightOptions = weightOptions.map { it.value }
+                weightOptions = weightOptions.map { it.value },
+                isGymMode = _isGymMode.value, // Save gym mode state
+                workoutLog = _workoutLog.value
             )
             val json = gson.toJson(currentState)
             Log.d("SaveAppState", "Generated JSON for app state: $json")
@@ -494,6 +607,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         applySetup(unsavedDefault, isUnsaved = true) // Apply temp state to UI
         selectedImage = defaultImage //  to reset the dropdown UI
         selectedBundle = null
+        clearExerciseCheckedStates() // Clear checked states when all setups are cleared
         saveAppState() // Persist the now-empty list of setups
     }
 
@@ -517,6 +631,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         activeSetupName = setup.name
         activeSetup = setup
         currentSetupIndex = _setups.value.indexOfFirst { it.name == setup.name }
+
+        // Initialize checked state for the applied setup if it doesn't exist
+        _exerciseCheckedStates.update { currentMap ->
+            if (!currentMap.containsKey(setup.name)) {
+                currentMap.toMutableMap().apply { put(setup.name, false) }
+            } else {
+                currentMap
+            }
+        }
 
         if (!isInitialLoad && !isUnsaved) {
             saveAppState()
@@ -636,6 +759,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     .ifEmpty { listOf(defaultOption) }
 
 
+                // Set gym mode state from imported file
+                _isGymMode.value = appState.isGymMode
+
                 // 2. Now that the lists are populated, load the setups.
                 _setups.value = appState.allSetups
                 _isExerciseListDirty.value
@@ -670,14 +796,91 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             Log.e("ImportFailure", "Failed to import from JSON as AppState or legacy List", e)
         }
     }
+    suspend fun exportWorkoutLogToCsv(
+        context: Context,
+        uri: Uri,
+        startDateStr: String?,
+        endDateStr: String?
+    ) {
+        withContext(Dispatchers.IO) {
+            val dateFormatter = SimpleDateFormat("MM-dd-yyyy", Locale.US).apply {
+                isLenient = false
+            }
 
+            try {
+                val parsedStartDate = startDateStr?.takeIf { it.isNotBlank() }?.let { dateFormatter.parse(it) }
+                val parsedEndDate = endDateStr?.takeIf { it.isNotBlank() }?.let { dateFormatter.parse(it) }
+
+                val filteredLog = _workoutLog.value.filter { entry ->
+                    val entryDate = try {
+                        dateFormatter.parse(entry.date)
+                    } catch (_: Exception) {
+                        return@filter false
+                    }
+                    val afterStart = parsedStartDate?.let { !entryDate.before(it) } ?: true
+                    val beforeEnd = parsedEndDate?.let { !entryDate.after(it) } ?: true
+                    afterStart && beforeEnd
+                }
+
+                if (filteredLog.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        _toastMessage.value = "No workout log entries found for the selected range."
+                    }
+                    return@withContext
+                }
+
+                // Create CSV Content
+                val csvHeader = "Mode,Date,Time,Exercise,Sets,Reps,Band Color,Weight (lbs),Times/Day,Times/Wk,Move To,Exercise Time,Move From,Rest,Set Rest,Total Time,Get Ready,Image,Instructions\n"
+                val csvBody = filteredLog.joinToString("\n") { entry ->
+                    listOf(
+                        entry.mode,
+                        entry.date,
+                        entry.time,
+                        entry.exerciseName,
+                        entry.sets,
+                        entry.reps,
+                        entry.bandColor,
+                        entry.weightLbs,
+                        entry.timesPerDay,
+                        entry.timesPerWeek,
+                        entry.moveToTime,
+                        entry.exerciseTime,
+                        entry.moveFromTime,
+                        entry.restTime,
+                        entry.setRestTime,
+                        entry.totalTime,
+                        entry.getReadyTime,
+                        entry.imageDisplayName,
+                        "\"${entry.instructions.replace("\"", "\"\"")}\"" // Wrap instructions in quotes to handle commas
+                    ).joinToString(",")
+                }
+
+                val fullCsv = csvHeader + csvBody
+
+                context.contentResolver.openOutputStream(uri, "w")?.use { outputStream ->
+                    outputStream.write(fullCsv.toByteArray())
+                    outputStream.flush()
+                }
+
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Workout log exported to CSV successfully!"
+                }
+            } catch (e: Exception) {
+                Log.e("ExportLog", "Error exporting CSV", e)
+                withContext(Dispatchers.Main) {
+                    _toastMessage.value = "Failed to export CSV: ${e.localizedMessage}"
+                }
+            }
+        }
+    }
     suspend fun saveSetupsToUri(context: Context, uri: Uri) {
         try {
             val currentState = AppState(
                 allSetups = _setups.value,
                 activeSetupName = this.activeSetup?.name,
                 bandColorOptions = bandColorOptions.map { it.value },
-                weightOptions = weightOptions.map { it.value }
+                weightOptions = weightOptions.map { it.value },
+                isGymMode = _isGymMode.value // Save gym mode state
             )
             val json = gson.toJson(currentState)
             Log.d("SaveToUri", "Generated JSON for URI: $json")
@@ -737,19 +940,14 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             val contentResolver = getApplication<Application>().contentResolver
             val imagesDir = File(getApplication<Application>().filesDir, userImagesDirectory)
             if (!imagesDir.exists()) {
-                imagesDir.mkdirs() // Create the directory if it doesn't exist
+                imagesDir.mkdirs() // Create the directory if it's not exist
             }
 
             // Derive the target display name and filename based on user input
             val originalBaseName = getFileName(imageUri)?.substringBeforeLast('.') ?: "User Image"
             val fileExtension = getFileName(imageUri)?.substringAfterLast('.', "")
             val targetDisplayName = "$originalBaseName (User)" // The desired display name
-            val targetStorageFileName = "${
-                originalBaseName.replace(
-                    ' ',
-                    '_'
-                )
-            }_user.${fileExtension?.ifBlank { "jpg" }}" // Unique, but without timestamp
+            val targetStorageFileName = """${originalBaseName.replace(' ', '_')}_user.${fileExtension?.ifBlank { "jpg" }}""" // Unique, but without timestamp
 
             val outputFile = File(imagesDir, targetStorageFileName)
 
@@ -759,7 +957,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     // Find the existing ImageOption that corresponds to this file name for the dialog
                     val existingImageOption =
                         imageOptions.find { it.storageName == targetStorageFileName }
-                    showOverwriteImageConfirmDialog(
+                    _showOverwriteImageConfirmDialog.value = (
                         existingImageOption ?: ImageOption(
                             targetDisplayName,
                             0,
@@ -910,7 +1108,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val userBundlesDir = File(getApplication<Application>().filesDir, "user_bundles")
             if (!userBundlesDir.exists()) {
-                userBundlesDir.mkdirs() // Create the directory if it doesn't exist
+                userBundlesDir.mkdirs() // Create the directory if it's not exist
             }
 
             val filename = "${bundleName.trim()}.json"
@@ -929,7 +1127,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     allSetups = _setups.value,
                     activeSetupName = activeSetup?.name,
                     bandColorOptions = bandColorOptions.map { it.value },
-                    weightOptions = weightOptions.map { it.value }
+                    weightOptions = weightOptions.map { it.value },
+                    isGymMode = _isGymMode.value // Save gym mode state
                 )
                 val json = gson.toJson(currentState)
                 bundleFile.writeText(json)
@@ -981,6 +1180,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                                 .sortedBy { it.name }
                             // Clear selected bundle if the deleted one was active
                             if (selectedBundle?.filePath == bundle.filePath) {
+                                selectedImage = defaultImage // Reset selected image to default if it was the deleted one
                                 selectedBundle = null
                             }
                             // If _setups was loaded from this bundle, it's now dirty relative to no bundle
@@ -1156,6 +1356,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 // --- TERMINATION STATES ---
                 is TimerState.Finished -> {
                     AppSoundPlayer.playSound(getApplication(), selectedCompleteSound.resourceId)
+                    // Auto-check the completed exercise if in Gym Mode
+                    if (_isGymMode.value && activeSetupName != null) {
+                        setExerciseChecked(activeSetupName!!, true)
+                    }
                     if (continueToNextExercise && currentSetupIndex != -1 && currentSetupIndex < _setups.value.size - 1) {
                         val nextIndex = currentSetupIndex + 1
                         val nextSetup = _setups.value[nextIndex]
@@ -1273,15 +1477,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        if (currentSetNumber < totalSets) {
+        return if (currentSetNumber < totalSets) {
             currentRepNumber = 1
             currentSetNumber++
             if (setRestMillis > 0)
-                return TimerState.SetResting(setRestMillis, setRestMillis)
+                TimerState.SetResting(setRestMillis, setRestMillis)
             else
-                return determineNextStateAfterSetRest()
+                determineNextStateAfterSetRest()
         } else {
-            return TimerState.Finished
+            TimerState.Finished
         }
     }
 
@@ -1342,7 +1546,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     if (field.name.startsWith("abc_") ||
                         field.name.startsWith("ic_") ||
                         field.name.startsWith("common_") ||
-                        field.name.startsWith("googleg_") ||
+                        field.name.startsWith("google_") ||
                         field.name.startsWith("notification_") ||
                         field.name.contains("$")
                     ) return@forEach
@@ -1362,7 +1566,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     file.isFile && (
                             file.name.endsWith(".jpg", true) ||
                                     file.name.endsWith(".png", true) ||
-                                    file.name.endsWith(".gif", true) // <-- ADD GIF SUPPORT HERE
+                                    file.name.endsWith(".gif", true)
                             )
                 } ?: arrayOf()
 
@@ -1446,4 +1650,3 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 }
-

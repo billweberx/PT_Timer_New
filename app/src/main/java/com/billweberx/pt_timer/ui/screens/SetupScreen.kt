@@ -42,6 +42,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -68,10 +69,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import coil.decode.GifDecoder
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -88,6 +87,7 @@ import com.billweberx.pt_timer.util.AppSoundPlayer
 import androidx.compose.material3.ButtonDefaults
 import com.billweberx.pt_timer.data.BundleOption
 import java.io.File
+import java.util.Locale
 
 @SuppressLint("LocalContextResourcesRead", "DiscouragedApi")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,7 +113,7 @@ fun SetupScreen(
             false
         )
     }
-
+    val (showClearLogConfirmDialog, setShowClearLogConfirmDialog) = remember { mutableStateOf(false) }
     LaunchedEffect(toastMessage) {
         toastMessage?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -214,6 +214,40 @@ fun SetupScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+
+            // --- VVV --- NEW: Gym/PT Mode Selector --- VVV ---
+            val isGymModeSelected by viewModel.isGymMode.collectAsStateWithLifecycle()
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { viewModel.setGymMode(false) }
+                ) {
+                    RadioButton(
+                        selected = !isGymModeSelected,
+                        onClick = { viewModel.setGymMode(false) }
+                    )
+                    Text("PT Mode")
+                }
+                Spacer(Modifier.width(16.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { viewModel.setGymMode(true) }
+                ) {
+                    RadioButton(
+                        selected = isGymModeSelected,
+                        onClick = { viewModel.setGymMode(true) }
+                    )
+                    Text("Gym Mode")
+                }
+            }
+            // --- End NEW: Gym/PT Mode Selector ---
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) // Add a divider for separation
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -466,8 +500,6 @@ fun SetupScreen(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(2.dp))
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // --- Rows 9-10: Input Fields ---
             Row(
@@ -631,6 +663,59 @@ fun SetupScreen(
                 )
             }
             AnimatedVisibility(visible = isManageSetupsExpanded) {
+                // Date Range Fields
+                var startDateText by remember { mutableStateOf("") }
+                var endDateText by remember { mutableStateOf("") }
+                val focusManager = LocalFocusManager.current
+                var isStartDateError by remember { mutableStateOf(false) }
+                var startDateErrorMessage by remember { mutableStateOf("") }
+                var isEndDateError by remember { mutableStateOf(false) }
+                var endDateErrorMessage by remember { mutableStateOf("") }
+                val validateDate: (String) -> String? = { dateString ->
+                    if (dateString.isBlank()) {
+                        null // Blank is allowed, means no filter
+                    } else {
+                        val regex = Regex("^\\d{2}-\\d{2}-\\d{4}$") // MM-DD-YYYY
+                        if (!regex.matches(dateString)) {
+                            "Invalid format. Use MM-DD-YYYY."
+                        } else {
+                            try {
+                                val parts = dateString.split("-")
+                                val month = parts[0].toInt()
+                                val day = parts[1].toInt()
+                                val year = parts[2].toInt()
+
+                                if (month !in 1..12) {
+                                    "Invalid month (MM must be 01-12)."
+                                } else if (day !in 1..31) { // Basic check
+                                    "Invalid day (DD must be 01-31)."
+                                } else if (year !in 1900..2100) { // Reasonable year range
+                                    "Invalid year."
+                                } else {
+                                    // Further check for valid day in month (e.g., Feb 30)
+                                    java.text.SimpleDateFormat("MM-dd-yyyy", Locale.US).apply {
+                                        isLenient = false
+                                    }.parse(dateString) // This will throw ParseException for invalid dates like Feb 30
+                                    null // Valid date
+                                }
+                            } catch (_: Exception) {
+                                "Invalid date."
+                            }
+                        }
+                    }
+                }
+                val exportLogLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.CreateDocument("text/csv"),
+                    onResult = { uri: Uri? ->
+                        uri?.let {
+                            scope.coroutineLaunch {
+                                // These variables (startDateText, endDateText) are now in scope
+                                viewModel.exportWorkoutLogToCsv(context, it, startDateText, endDateText)
+                            }
+                        }
+                    }
+                )
+
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
 
                     //
@@ -943,8 +1028,155 @@ fun SetupScreen(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    // --- VVV --- NEW: Workout Log Export Section --- VVV ---
+                    Spacer(modifier = Modifier.height(20.dp)) // Space above new section
+                    Text(
+                        text = "Workout Log Export",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
 
 
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = startDateText,
+                            onValueChange = { newValue ->
+                                // Allow only digits and hyphens, and ensure it follows MM-DD-YYYY basic structure
+                                if (newValue.matches(Regex("[0-9-]*"))) {
+                                    startDateText = newValue
+                                    // Clear error immediately on change
+                                    isStartDateError = false
+                                    startDateErrorMessage = ""
+                                }
+                            },
+                            label = { Text("Start Date (MM-DD-YYYY)") },
+                            singleLine = true,
+                            isError = isStartDateError, // <-- NEW: Link to error state
+                            supportingText = { // <-- NEW: Display error message
+                                if (isStartDateError) {
+                                    Text(startDateErrorMessage, color = MaterialTheme.colorScheme.error)
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Next) }),
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { focusState -> // <-- NEW: Validate on focus loss
+                                    if (!focusState.isFocused) {
+                                        val error = validateDate(startDateText)
+                                        isStartDateError = error != null
+                                        startDateErrorMessage = error ?: ""
+                                    }
+                                }
+                        )
+                        OutlinedTextField(
+                            value = endDateText,
+                            onValueChange = { newValue ->
+                                if (newValue.matches(Regex("[0-9-]*"))) {
+                                    endDateText = newValue
+                                    isEndDateError = false
+                                    endDateErrorMessage = ""
+                                }
+                            },
+                            label = { Text("End Date (MM-DD-YYYY)") },
+                            singleLine = true,
+                            isError = isEndDateError,
+                            supportingText = {
+                                if (isEndDateError) {
+                                    Text(endDateErrorMessage, color = MaterialTheme.colorScheme.error)
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { focusState ->
+                                    if (!focusState.isFocused) {
+                                        val error = validateDate(endDateText)
+                                        isEndDateError = error != null
+                                        endDateErrorMessage = error ?: ""
+                                    }
+                                }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // --- VVV --- NEW: Export Log and Clear Log Buttons (Centered) --- VVV ---
+                    Row(
+                        modifier = Modifier.fillMaxWidth(), // Fill width to allow centering its content
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally), // Center the two buttons
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Export Log Button
+                        val exportLogInteractionSource = remember { MutableInteractionSource() }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.tertiary,
+                            contentColor = MaterialTheme.colorScheme.onTertiary,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = exportLogInteractionSource,
+                                onClick = {
+                                    val startError = validateDate(startDateText)
+                                    val endError = validateDate(endDateText)
+
+                                    isStartDateError = startError != null
+                                    startDateErrorMessage = startError ?: ""
+                                    isEndDateError = endError != null
+                                    endDateErrorMessage = endError ?: ""
+
+                                    if (!isStartDateError && !isEndDateError) {
+                                        Toast.makeText(context, "Select a filename to save the log.", Toast.LENGTH_LONG).show()
+                                        exportLogLauncher.launch("PT_Timer_WorkoutLog_${startDateText}_${endDateText}.csv")
+                                    } else {
+                                        Toast.makeText(context, "Please fix date format errors.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp) // Slightly less padding for two buttons
+                            ) {
+                                Text("Export Log")
+                            }
+                        }
+
+                        val logEntries by viewModel.workoutLog.collectAsStateWithLifecycle()
+                        val clearLogButtonEnabled = logEntries.isNotEmpty()
+                        val clearLogInteractionSource = remember { MutableInteractionSource() }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (clearLogButtonEnabled) Color.Red.copy(alpha = 0.8f) else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (clearLogButtonEnabled) Color.White else Color.Gray,
+                            tonalElevation = 2.dp,
+                            modifier = Modifier.pressable(
+                                interactionSource = clearLogInteractionSource,
+                                enabled = clearLogButtonEnabled,
+                                onClick = { setShowClearLogConfirmDialog(true) } // Show confirmation dialog
+                            )
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                            ) {
+                                Text("Clear Log")
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp)) // Space below the buttons
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    // --- ^^^ --- End NEW: Workout Log Export Section --- ^^^ ---
                 }
             }
 
@@ -1170,7 +1402,27 @@ fun SetupScreen(
             imageToOverwrite = viewModel.showOverwriteImageConfirmDialog.collectAsState().value,
             originalImageUri = imageUriToSave // Pass the original URI
         )
-
+        if (showClearLogConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { setShowClearLogConfirmDialog(false) },
+                title = { Text("Confirm Clear Log") },
+                text = { Text("Are you sure you want to delete ALL workout log entries? This cannot be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.clearWorkoutLog() // Call ViewModel to clear the log
+                        setShowClearLogConfirmDialog(false)
+                        Toast.makeText(context, "Workout log cleared!", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Text("Yes, Clear")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { setShowClearLogConfirmDialog(false) }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }  // end of innerPadding lambda
 }  // end of SetupScreen composable
 

@@ -8,13 +8,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +36,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -75,6 +80,8 @@ fun PTTimerScreen(
     val context = LocalContext.current
     val timerState by viewModel.timerScreenState.collectAsStateWithLifecycle()
     val loadedSetups by viewModel.loadedSetups.collectAsStateWithLifecycle()
+    val exerciseCheckedStates by viewModel.exerciseCheckedStates.collectAsStateWithLifecycle()
+    val anyExerciseChecked = exerciseCheckedStates.values.any { it }
     var isSetupDropdownExpanded by remember { mutableStateOf(false) }
     var instructionsExpanded by remember { mutableStateOf(false) }
     var timerConfigExpanded by remember { mutableStateOf(false) }
@@ -145,6 +152,38 @@ fun PTTimerScreen(
                 }
             }
         }
+
+        // --- NEW: Gym/PT Mode Selector ---
+        val isGymModeSelected by viewModel.isGymMode.collectAsStateWithLifecycle()
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { viewModel.setGymMode(false) }
+            ) {
+                RadioButton(
+                    selected = !isGymModeSelected,
+                    onClick = { viewModel.setGymMode(false) }
+                )
+                Text("PT Mode")
+            }
+            Spacer(Modifier.width(16.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { viewModel.setGymMode(true) }
+            ) {
+                RadioButton(
+                    selected = isGymModeSelected,
+                    onClick = { viewModel.setGymMode(true) }
+                )
+                Text("Gym Mode")
+            }
+        }
+        // --- End NEW: Gym/PT Mode Selector ---
 
         // --- Row 2: Phase Status ---
         Text(timerState.status, style = MaterialTheme.typography.headlineMedium)
@@ -361,7 +400,10 @@ fun PTTimerScreen(
                 label = { Text("Setups") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isSetupDropdownExpanded) },
                 modifier = Modifier
-                    .menuAnchor()
+                    .menuAnchor( // <-- ADD THESE PARAMETERS
+                        type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                        enabled = !isRunning
+                    )
                     .fillMaxWidth()
             )
             ExposedDropdownMenu(
@@ -373,21 +415,80 @@ fun PTTimerScreen(
                 loadedSetups.forEach { setup ->
                     DropdownMenuItem(
                         text = {
-                            Text(
-                                text = setup.name,
-                                modifier = Modifier,
-                                style = if (viewModel.activeSetupName == setup.name) {
-                                    MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.primary)
-                                } else {
-                                    MaterialTheme.typography.bodyLarge
-                                }
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = exerciseCheckedStates[setup.name] ?: false,
+                                    onCheckedChange = { isChecked ->
+                                        viewModel.setExerciseChecked(setup.name, isChecked)
+                                    }
+                                )
+                                Text(
+                                    text = setup.name,
+                                    modifier = Modifier.weight(1f),
+                                    style = if (viewModel.activeSetupName == setup.name) {
+                                        MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        MaterialTheme.typography.bodyLarge
+                                    }
+                                )
+                            }
                         },
                         onClick = {
                             viewModel.applySetup(setup)
                             isSetupDropdownExpanded = false
                         }
                     )
+                }
+            }
+        }
+
+        // NEW: Row for Save Logged Exercises and Clear Checkboxes buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+        ) {
+            // --- Save Logged Exercises Button ---
+            val saveLogInteractionSource = remember { MutableInteractionSource() }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondary,
+                contentColor = MaterialTheme.colorScheme.onSecondary,
+                tonalElevation = 2.dp,
+                modifier = Modifier.pressable(
+                    interactionSource = saveLogInteractionSource,
+                    onClick = { viewModel.saveCheckedExercisesToLog() }
+                )
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Text("Save Logged\nExercises", textAlign = TextAlign.Center)
+                }
+            }
+
+            // --- Clear Checkboxes Button ---
+            val clearChecksInteractionSource = remember { MutableInteractionSource() }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                // Background color reflects enabled state
+                color = if (anyExerciseChecked) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                // Text color reflects enabled state
+                contentColor = if (anyExerciseChecked) MaterialTheme.colorScheme.onSurfaceVariant else Color.Gray,
+                tonalElevation = 2.dp,
+                modifier = Modifier.pressable(
+                    interactionSource = clearChecksInteractionSource,
+                    enabled = anyExerciseChecked, // <-- Bind to the state
+                    onClick = { viewModel.clearExerciseCheckedStates() }
+                )
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Text("Clear\nCheckboxes", textAlign = TextAlign.Center)
                 }
             }
         }
@@ -533,7 +634,6 @@ fun PTTimerScreen(
                             model = ImageRequest.Builder(context)
                                 .data(imageModel) // Load from R.drawable or File
                                 .crossfade(true)
-                                .allowHardware(false) // Required for animated GIFs on some devices/older Android versions
                                 .build(),
                             contentDescription = "Exercise Image: ${selectedImageOption.displayName}",
                             modifier = Modifier
@@ -601,4 +701,3 @@ private fun formatTime(millis: Long): String {
         String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
-

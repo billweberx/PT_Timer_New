@@ -16,6 +16,8 @@ data class AppState(
     @SerializedName("activeSetupName") val activeSetupName: String? = null,
     // Store as simple strings for robust serialization
     @SerializedName("bandColorOptions") val bandColorOptions: List<String> = emptyList(),
-    @SerializedName("weightOptions") val weightOptions: List<String> = emptyList()
+    @SerializedName("weightOptions") val weightOptions: List<String> = emptyList(),
+    @SerializedName("isGymMode") val isGymMode: Boolean = false,
+    @SerializedName("workoutLog") val workoutLog: List<WorkoutLogEntry> = emptyList()
 )
 

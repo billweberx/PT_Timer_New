@@ -14,11 +14,8 @@ navigationCompose = "2.9.5"
 material = "1.13.0"
 lifecycleRuntimeCompose = "2.9.4"
 androidx-annotation = "1.9.1"
-# coil = "2.6.0" # REMOVED
-# coilGif = "2.6.0" # REMOVED
-composeCompiler = "1.5.4" # This was the version in your original `app/build.gradle.kts`
-# or it might have been implied by 'compose-compiler' plugin version.
-# Let's keep it as a version reference for safety, as your app was building with it.
+coil = "2.6.0"
+coilGif = "2.6.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -42,10 +39,10 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidx-annotation" }
-# coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" } # REMOVED
-# coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coilGif" } # REMOVED
+coilCompose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coilGif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coilGif" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-composeCompiler = { id = "androidx.compose.compiler", version = "1.5.4" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

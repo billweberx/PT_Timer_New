@@ -3,7 +3,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.composeCompiler) # This applies the compose compiler plugin
+    alias(libs.plugins.compose.compiler)
+
 }
 
 android {
@@ -34,6 +35,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            isMinifyEnabled = false
         }
     }
     applicationVariants.all {
@@ -62,6 +64,7 @@ configurations.all {
         force(libs.gson)
     }
 }
+//
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -72,8 +75,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    # implementation(libs.coil.compose) # REMOVED
-    # implementation(libs.coil.gif) # REMOVED
+    implementation(libs.coilCompose)
+    implementation(libs.coilGif)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
     implementation(libs.material)
